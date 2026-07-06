@@ -1515,36 +1515,6 @@ tr:hover td {
   margin-bottom: 14px;
 }
 
-.login-help {
-  margin-top: 22px;
-  padding-top: 14px;
-  border-top: 1px solid rgba(0, 0, 0, 0.06);
-  font-size: 0.72rem;
-  color: #6b7280;
-  text-align: left;
-  line-height: 1.6;
-}
-
-[data-theme="dark"] .login-help {
-  border-top-color: rgba(255, 255, 255, 0.06);
-  color: #9ca3af;
-}
-
-.login-help code {
-  background-color: rgba(13, 148, 136, 0.08);
-  color: var(--primary);
-  padding: 2px 6px;
-  border-radius: var(--radius-xs);
-  font-family: 'SF Mono', 'Fira Code', monospace;
-  font-size: 0.72rem;
-  border: 1px solid rgba(13, 148, 136, 0.12);
-}
-
-[data-theme="dark"] .login-help code {
-  background-color: rgba(20, 184, 166, 0.08);
-  color: #14b8a6;
-  border-color: rgba(20, 184, 166, 0.15);
-}
 
 /* Admin-only visibility */
 .admin-only.hidden {
