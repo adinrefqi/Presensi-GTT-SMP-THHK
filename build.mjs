@@ -4,7 +4,6 @@ import { build } from 'vite';
 
 await build({ configFile: false });
 
-for (const filename of ['app.js', 'sw.js', 'manifest.json', 'pwa-icon.png', 'style.css']) {
+for (const filename of ['app.js', 'sw.js', 'manifest.json', 'pwa-icon.png', 'school-logo.png', 'style.css']) {
   copyFileSync(resolve(filename), resolve('dist', filename));
 }
-

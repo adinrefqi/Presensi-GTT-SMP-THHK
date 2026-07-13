@@ -122,12 +122,10 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   align-items: center;
   justify-content: center;
   flex: 0 0 auto;
-  color: #073b36;
-  background: #65dfcf;
-  border-radius: 10px;
+  background: transparent;
 }
-.logo-icon { width: 40px; height: 40px; }
-.logo-icon svg, .mobile-logo svg { width: 21px; height: 21px; }
+.logo-icon { width: 44px; height: 44px; }
+.logo-icon img, .mobile-logo img, .login-logo img { display: block; width: 100%; height: 100%; object-fit: contain; }
 .brand-info h1 { color: #fff; font-size: 0.98rem; font-weight: 700; letter-spacing: -0.02em; }
 .brand-info p { margin-top: 2px; color: var(--sidebar-text); font-size: 0.68rem; letter-spacing: 0.06em; text-transform: uppercase; }
 
@@ -390,8 +388,7 @@ tbody tr:hover { background: var(--primary-light); }
 [data-theme="dark"] .login-container { background: #0d1717; }
 [data-theme="dark"] .login-container::before { background: #15312f; }
 .login-card { position: relative; z-index: 1; width: 100%; max-width: 390px; padding: 36px; color: var(--text-primary); background: var(--card-bg-solid); border: 1px solid var(--card-border); border-radius: 18px; box-shadow: 0 18px 48px rgba(17,42,42,.12); text-align: center; }
-.login-logo { width: 54px; height: 54px; margin-bottom: 18px; }
-.login-logo svg { width: 25px; height: 25px; }
+.login-logo { width: 86px; height: 86px; margin-bottom: 18px; }
 .login-card h2 { font-size: 1.32rem; font-weight: 700; letter-spacing: -.03em; }
 .login-card > p { margin: 7px 0 24px; color: var(--text-secondary); font-size: .8rem; }
 .login-card .form-group { margin-bottom: 14px; text-align: left; }
@@ -411,7 +408,7 @@ tbody tr:hover { background: var(--primary-light); }
   .main-content { gap: 16px; padding: 14px 14px 84px; }
   .top-header { display: none !important; }
   .mobile-brand-header { display: flex; align-items: center; gap: 10px; min-height: 58px; padding: 10px 12px; background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 12px; box-shadow: var(--shadow-xs); }
-  .mobile-logo { width: 36px; height: 36px; border-radius: 9px; }
+  .mobile-logo { width: 38px; height: 38px; }
   .mobile-brand-info { min-width: 0; }
   .mobile-brand-info h3 { overflow: hidden; color: var(--text-primary); font-size: .9rem; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
   .mobile-brand-info p { color: var(--text-muted); font-size: .62rem; letter-spacing: .04em; text-transform: uppercase; }

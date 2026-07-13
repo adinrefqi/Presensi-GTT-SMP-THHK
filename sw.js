@@ -6,6 +6,7 @@ const ASSETS_TO_CACHE = [
   '/app.js',
   '/manifest.json',
   '/pwa-icon.png',
+  '/school-logo.png',
   'https://cdn.jsdelivr.net/npm/chart.js',
   'https://unpkg.com/lucide@latest',
   'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2'
