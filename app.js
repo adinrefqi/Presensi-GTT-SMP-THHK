@@ -20,7 +20,8 @@ let state = {
 };
 
 // SUPABASE CONFIGURATION
-const SUPABASE_URL = "https://ckhkummpclhlfofhkddi.supabase.co/rest/v1/";
+// Supabase JS expects the project base URL, not the REST endpoint URL.
+const SUPABASE_URL = "https://ckhkummpclhlfofhkddi.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNraGt1bW1wY2xobGZvZmhrZGRpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMyMzM0OTcsImV4cCI6MjA5ODgwOTQ5N30.wwBR7xRQiLUuezBG9iNcEcL7_rZSBphORnP7BPmEZT4";
 let supabaseClient = null;
 
@@ -39,7 +40,74 @@ try {
 }
 
 function isSupabaseConfigured() {
-  return supabaseClient && SUPABASE_URL !== "YOUR_SUPABASE_URL";
+  return Boolean(
+    supabaseClient &&
+    SUPABASE_URL &&
+    SUPABASE_ANON_KEY &&
+    !SUPABASE_URL.includes("YOUR_SUPABASE_URL") &&
+    !SUPABASE_ANON_KEY.includes("YOUR_SUPABASE_ANON_KEY")
+  );
+}
+
+const SUPABASE_REQUEST_TIMEOUT_MS = 15000;
+const SUPABASE_REQUEST_ATTEMPTS = 2;
+
+function getSupabaseErrorMessage(error) {
+  if (!error) return "Kesalahan tidak diketahui.";
+
+  const parts = [error.message, error.details, error.hint]
+    .filter(Boolean)
+    .map(value => String(value).trim())
+    .filter((value, index, values) => values.indexOf(value) === index);
+
+  if (error.code) parts.push(`Kode: ${error.code}`);
+  return parts.join(" — ") || String(error);
+}
+
+function createSupabaseError(error, context) {
+  const message = getSupabaseErrorMessage(error);
+  const wrappedError = new Error(`${context}: ${message}`);
+  wrappedError.code = error && error.code ? error.code : "SUPABASE_REQUEST_FAILED";
+  wrappedError.originalError = error;
+  return wrappedError;
+}
+
+async function runSupabaseRequest(requestFactory, context, attempts = SUPABASE_REQUEST_ATTEMPTS) {
+  let lastError = null;
+
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    let timeoutId;
+
+    try {
+      const timeoutPromise = new Promise((_, reject) => {
+        timeoutId = setTimeout(() => {
+          reject(new Error(`Waktu koneksi habis setelah ${SUPABASE_REQUEST_TIMEOUT_MS / 1000} detik.`));
+        }, SUPABASE_REQUEST_TIMEOUT_MS);
+      });
+
+      const result = await Promise.race([requestFactory(), timeoutPromise]);
+      clearTimeout(timeoutId);
+
+      if (result && result.error) {
+        throw createSupabaseError(result.error, context);
+      }
+
+      return result;
+    } catch (error) {
+      clearTimeout(timeoutId);
+      lastError = error instanceof Error ? error : createSupabaseError(error, context);
+
+      if (attempt < attempts) {
+        await new Promise(resolve => setTimeout(resolve, 600 * attempt));
+      }
+    }
+  }
+
+  if (lastError && !lastError.message.startsWith(`${context}:`)) {
+    throw createSupabaseError(lastError, context);
+  }
+
+  throw lastError || new Error(`${context}: permintaan gagal.`);
 }
 
 // DYNAMIC LOADING OVERLAY
@@ -133,14 +201,35 @@ async function loadData() {
   }
   
   try {
-    // 1. Fetch settings
-    const { data: settingsData, error: settingsError } = await supabaseClient
-      .from("settings")
-      .select("*")
-      .eq("id", 1)
-      .maybeSingle();
-      
-    if (settingsError) throw settingsError;
+    // Fetch independent datasets in parallel so a slow request does not block the others.
+    const [settingsResult, teachersResult, attendanceResult] = await Promise.all([
+      runSupabaseRequest(
+        () => supabaseClient
+          .from("settings")
+          .select("*")
+          .eq("id", 1)
+          .maybeSingle(),
+        "Gagal mengambil pengaturan sekolah"
+      ),
+      runSupabaseRequest(
+        () => supabaseClient
+          .from("teachers")
+          .select("*")
+          .order("name", { ascending: true }),
+        "Gagal mengambil data guru"
+      ),
+      runSupabaseRequest(
+        () => supabaseClient
+          .from("attendance")
+          .select("*"),
+        "Gagal mengambil data presensi"
+      )
+    ]);
+
+    const settingsData = settingsResult.data;
+    const teachersData = teachersResult.data;
+    const attendanceData = attendanceResult.data;
+
     if (settingsData) {
       state.settings = {
         schoolName: settingsData.school_name,
@@ -152,13 +241,6 @@ async function loadData() {
       };
     }
     
-    // 2. Fetch teachers
-    const { data: teachersData, error: teachersError } = await supabaseClient
-      .from("teachers")
-      .select("*")
-      .order("name", { ascending: true });
-      
-    if (teachersError) throw teachersError;
     if (teachersData) {
       state.teachers = teachersData.map(t => ({
         id: t.id,
@@ -170,12 +252,6 @@ async function loadData() {
       }));
     }
     
-    // 3. Fetch attendance
-    const { data: attendanceData, error: attendanceError } = await supabaseClient
-      .from("attendance")
-      .select("*");
-      
-    if (attendanceError) throw attendanceError;
     if (attendanceData) {
       state.attendance = attendanceData.map(a => ({
         id: a.id,
@@ -189,8 +265,15 @@ async function loadData() {
     }
     
   } catch (err) {
-    console.error("Gagal mengambil data dari Supabase:", err);
-    alert("Koneksi Supabase gagal! Menggunakan database local (localStorage) sebagai cadangan.\\nDetail: " + err.message);
+    console.error("Gagal mengambil data dari Supabase:", {
+      message: err.message,
+      code: err.code,
+      originalError: err.originalError
+    });
+    alert(
+      "Data online belum dapat dimuat. Aplikasi akan menggunakan data lokal sementara.\\n\\n" +
+      "Penyebab: " + getSupabaseErrorMessage(err)
+    );
     loadDataFromStorage();
   }
 }
@@ -474,14 +557,15 @@ async function login(usernameInput, passwordInput) {
   try {
     // 1. Check Supabase Admins if configured
     if (isSupabaseConfigured()) {
-      const { data: adminData, error: adminError } = await supabaseClient
-        .from("admins")
-        .select("*")
-        .eq("username", username)
-        .eq("password", password)
-        .maybeSingle();
-        
-      if (adminError) throw adminError;
+      const { data: adminData } = await runSupabaseRequest(
+        () => supabaseClient
+          .from("admins")
+          .select("username, name")
+          .eq("username", username)
+          .eq("password", password)
+          .maybeSingle(),
+        "Gagal memeriksa akun admin"
+      );
       
       if (adminData) {
         state.currentUser = { role: "admin", name: adminData.name, id: adminData.username };
@@ -517,8 +601,15 @@ async function login(usernameInput, passwordInput) {
     
     errorMsg.style.display = "block";
   } catch (err) {
-    console.error("Gagal melakukan login:", err);
-    alert("Gagal melakukan login ke database: " + err.message);
+    console.error("Gagal melakukan login:", {
+      message: err.message,
+      code: err.code,
+      originalError: err.originalError
+    });
+    alert(
+      "Login online belum dapat diproses. Periksa koneksi internet lalu coba lagi.\\n\\n" +
+      "Penyebab: " + getSupabaseErrorMessage(err)
+    );
   } finally {
     showLoadingOverlay(false);
   }

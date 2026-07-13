@@ -9,7 +9,7 @@
   
   <script>
     // Force clear old service workers and cache for testing updates
-    if ('serviceWorker' in navigator) {
+    if (location.protocol !== 'file:' && 'serviceWorker' in navigator) {
       navigator.serviceWorker.getRegistrations().then(registrations => {
         for (let registration of registrations) {
           registration.unregister();
@@ -42,8 +42,8 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   
   <!-- PWA & Mobile Web App Meta Tags -->
-  <link rel="manifest" href="/manifest.json">
-  <link rel="apple-touch-icon" href="/pwa-icon.png">
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="pwa-icon.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Presensi GTT">
@@ -51,9 +51,9 @@
   
   <script>
     // Register PWA Service Worker
-    if ('serviceWorker' in navigator) {
+    if (location.protocol !== 'file:' && 'serviceWorker' in navigator) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/sw.js')
+        navigator.serviceWorker.register('sw.js')
           .then(reg => console.log('[PWA] Service Worker registered:', reg.scope))
           .catch(err => console.log('[PWA] Service Worker registration failed:', err));
       });
@@ -652,6 +652,7 @@
   </div>
 
   <!-- Script initialization -->
-  <script type="module" src="app.js"></script>
+  <!-- Classic script keeps the app usable when index.html is opened via file://. -->
+  <script src="app.js"></script>
 </body>
 </html>
