@@ -358,6 +358,24 @@
                 <textarea id="presensiMateri" rows="3" placeholder="Deskripsi materi yang diajarkan..."></textarea>
               </div>
 
+              <!-- Signature Pad -->
+              <div class="form-group">
+                <label>Tanda Tangan Guru</label>
+                <div class="signature-pad-container">
+                  <canvas id="signatureCanvas" class="signature-canvas" width="460" height="180"></canvas>
+                  <div class="signature-pad-actions">
+                    <span class="signature-hint">
+                      <i data-lucide="pen-tool" style="width:13px;height:13px;"></i>
+                      Gambar tanda tangan di area atas
+                    </span>
+                    <button type="button" class="btn btn-secondary btn-sm" id="btnClearSignature">
+                      <i data-lucide="eraser"></i>
+                      Hapus
+                    </button>
+                  </div>
+                </div>
+              </div>
+
               <div class="form-row">
                 <button type="button" class="btn btn-secondary" id="btnResetPresensiForm">Reset</button>
                 <button type="submit" class="btn btn-primary" id="btnSimpanPresensi">Simpan Presensi</button>
@@ -650,6 +668,9 @@
       </div>
     </div>
   </div>
+
+  <!-- PRINT REKAP PER GURU AREA (hidden, used by print function) -->
+  <div id="printRekapArea"></div>
 
   <!-- Script initialization -->
   <!-- Classic script keeps the app usable when index.html is opened via file://. -->

@@ -181,6 +181,12 @@ document.addEventListener("DOMContentLoaded", async () => {
   
   // Event listeners configuration
   setupEventListeners();
+  
+  // Initialize Signature Pad
+  const sigCanvas = document.getElementById('signatureCanvas');
+  if (sigCanvas) {
+    signaturePadInstance = new SignaturePad(sigCanvas);
+  }
 });
 
 // LOAD DATA
@@ -260,7 +266,8 @@ async function loadData() {
         status: a.status,
         jp: Number(a.jp),
         class: a.class,
-        topic: a.topic
+        topic: a.topic,
+        signature: a.signature || ''
       }));
     }
     
@@ -361,6 +368,137 @@ function safeCreateIcons() {
     console.warn("Ikon gagal dimuat (Lucide offline):", err);
   }
 }
+
+// ====================================================
+// SIGNATURE PAD CLASS
+// ====================================================
+class SignaturePad {
+  constructor(canvas) {
+    this.canvas = canvas;
+    this.ctx = canvas.getContext('2d');
+    this.drawing = false;
+    this.isEmpty = true;
+    this.lastX = 0;
+    this.lastY = 0;
+    
+    this.ctx.strokeStyle = '#1a1a1a';
+    this.ctx.lineWidth = 2.2;
+    this.ctx.lineCap = 'round';
+    this.ctx.lineJoin = 'round';
+    
+    this._resizeCanvas();
+    this._bindEvents();
+  }
+  
+  _resizeCanvas() {
+    const rect = this.canvas.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    const cssWidth = rect.width || 460;
+    const cssHeight = 180;
+    
+    this.canvas.width = cssWidth * dpr;
+    this.canvas.height = cssHeight * dpr;
+    this.canvas.style.width = cssWidth + 'px';
+    this.canvas.style.height = cssHeight + 'px';
+    
+    this.ctx.scale(dpr, dpr);
+    this.ctx.strokeStyle = '#1a1a1a';
+    this.ctx.lineWidth = 2.2;
+    this.ctx.lineCap = 'round';
+    this.ctx.lineJoin = 'round';
+  }
+  
+  _getPos(e) {
+    const rect = this.canvas.getBoundingClientRect();
+    if (e.touches && e.touches.length > 0) {
+      return {
+        x: e.touches[0].clientX - rect.left,
+        y: e.touches[0].clientY - rect.top
+      };
+    }
+    return {
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top
+    };
+  }
+  
+  _bindEvents() {
+    // Mouse events
+    this.canvas.addEventListener('mousedown', (e) => this._startDraw(e));
+    this.canvas.addEventListener('mousemove', (e) => this._draw(e));
+    this.canvas.addEventListener('mouseup', () => this._endDraw());
+    this.canvas.addEventListener('mouseleave', () => this._endDraw());
+    
+    // Touch events
+    this.canvas.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      this._startDraw(e);
+    }, { passive: false });
+    this.canvas.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      this._draw(e);
+    }, { passive: false });
+    this.canvas.addEventListener('touchend', (e) => {
+      e.preventDefault();
+      this._endDraw();
+    });
+  }
+  
+  _startDraw(e) {
+    this.drawing = true;
+    this.isEmpty = false;
+    const pos = this._getPos(e);
+    this.lastX = pos.x;
+    this.lastY = pos.y;
+    this.canvas.classList.add('active');
+  }
+  
+  _draw(e) {
+    if (!this.drawing) return;
+    const pos = this._getPos(e);
+    
+    this.ctx.beginPath();
+    this.ctx.moveTo(this.lastX, this.lastY);
+    this.ctx.lineTo(pos.x, pos.y);
+    this.ctx.stroke();
+    
+    this.lastX = pos.x;
+    this.lastY = pos.y;
+  }
+  
+  _endDraw() {
+    this.drawing = false;
+    this.canvas.classList.remove('active');
+  }
+  
+  clear() {
+    const dpr = window.devicePixelRatio || 1;
+    this.ctx.clearRect(0, 0, this.canvas.width / dpr, this.canvas.height / dpr);
+    this.isEmpty = true;
+  }
+  
+  toDataURL() {
+    if (this.isEmpty) return '';
+    return this.canvas.toDataURL('image/png');
+  }
+  
+  loadFromDataURL(dataUrl) {
+    if (!dataUrl) {
+      this.clear();
+      return;
+    }
+    const img = new Image();
+    img.onload = () => {
+      this.clear();
+      const dpr = window.devicePixelRatio || 1;
+      this.ctx.drawImage(img, 0, 0, this.canvas.width / dpr, this.canvas.height / dpr);
+      this.isEmpty = false;
+    };
+    img.src = dataUrl;
+  }
+}
+
+let signaturePadInstance = null;
 
 function formatRupiah(number) {
   return new Intl.NumberFormat("id-ID", {
@@ -1259,23 +1397,28 @@ function renderDetailedLogs() {
     
     const div = document.createElement("div");
     div.className = "recent-log-item";
+    div.style.flexDirection = 'column';
+    div.style.alignItems = 'stretch';
     div.innerHTML = `
-      <div class="log-info-meta">
-        <span class="log-teacher-name" style="font-size: 0.95rem;">${teacherName}</span>
-        <span class="log-subject-jp" style="font-size: 0.8rem;">
-          Mapel: ${subject} • <strong class="text-primary-color">${log.status}</strong> 
-          ${log.status === 'Hadir' ? '• ' + log.jp + ' JP • Kelas: ' + log.class : ''}
-        </span>
-        ${log.status === 'Hadir' && log.topic ? `<span class="log-date-time" style="font-size: 0.75rem; margin-top:2px;">KBM: "${log.topic}"</span>` : ''}
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
+        <div class="log-info-meta">
+          <span class="log-teacher-name" style="font-size: 0.95rem;">${teacherName}</span>
+          <span class="log-subject-jp" style="font-size: 0.8rem;">
+            Mapel: ${subject} • <strong class="text-primary-color">${log.status}</strong> 
+            ${log.status === 'Hadir' ? '• ' + log.jp + ' JP • Kelas: ' + log.class : ''}
+          </span>
+          ${log.status === 'Hadir' && log.topic ? `<span class="log-date-time" style="font-size: 0.75rem; margin-top:2px;">KBM: "${log.topic}"</span>` : ''}
+        </div>
+        <div class="actions-cell">
+          <button class="icon-btn edit" onclick="editLog('${log.id}')" title="Edit Presensi">
+            <i data-lucide="edit-3"></i>
+          </button>
+          <button class="icon-btn delete" onclick="deleteLog('${log.id}')" title="Hapus Presensi">
+            <i data-lucide="trash-2"></i>
+          </button>
+        </div>
       </div>
-      <div class="actions-cell">
-        <button class="icon-btn edit" onclick="editLog('${log.id}')" title="Edit Presensi">
-          <i data-lucide="edit-3"></i>
-        </button>
-        <button class="icon-btn delete" onclick="deleteLog('${log.id}')" title="Hapus Presensi">
-          <i data-lucide="trash-2"></i>
-        </button>
-      </div>
+      ${log.signature ? `<div style="display:flex;align-items:center;gap:6px;margin-top:4px;"><span style="font-size:.66rem;color:var(--text-muted);">TTD:</span><img src="${log.signature}" alt="Tanda tangan" class="signature-preview"></div>` : ''}
     `;
     container.appendChild(div);
   });
@@ -1294,6 +1437,11 @@ window.editLog = function(id) {
   document.getElementById("presensiJP").value = log.jp;
   document.getElementById("presensiKelas").value = log.class || "";
   document.getElementById("presensiMateri").value = log.topic || "";
+  
+  // Load signature into pad
+  if (signaturePadInstance) {
+    signaturePadInstance.loadFromDataURL(log.signature || '');
+  }
   
   // Enable or disable fields based on status
   togglePresensiFormFields(log.status);
@@ -1519,6 +1667,36 @@ window.generateSlipGaji = function(teacherId, month, year) {
         <div>NIP: ${state.settings.treasurerNip}</div>
       </div>
     </div>
+    
+    ${(() => {
+      // Find the latest signature from this teacher's attendance logs for this period
+      const latestSigLog = teacherLogs.slice().reverse().find(l => l.signature);
+      if (latestSigLog) {
+        return `
+          <div class="slip-divider"></div>
+          <div class="slip-signatures">
+            <div class="signature-box" style="width: 100%; text-align: center;">
+              <div>Penerima Honorarium,</div>
+              <div style="margin-top: 6px;"><img src="${latestSigLog.signature}" alt="Tanda Tangan Guru" class="slip-signature-img"></div>
+              <div style="font-weight: bold; text-decoration: underline; margin-top: 6px;">${teacher.name}</div>
+              <div>NUPTK: ${teacher.id}</div>
+            </div>
+          </div>
+        `;
+      } else {
+        return `
+          <div class="slip-divider"></div>
+          <div class="slip-signatures">
+            <div class="signature-box" style="width: 100%; text-align: center;">
+              <div>Penerima Honorarium,</div>
+              <div class="signature-space"></div>
+              <div style="font-weight: bold; text-decoration: underline;">${teacher.name}</div>
+              <div>NUPTK: ${teacher.id}</div>
+            </div>
+          </div>
+        `;
+      }
+    })()}
   `;
   
   // Show modal
@@ -1590,6 +1768,153 @@ function importRestoreJSON(event) {
     }
   };
   reader.readAsText(file);
+}
+
+// ====================================================
+// PRINT REKAP PER GURU — DAFTAR HADIR GURU
+// ====================================================
+function generatePrintRekapPerGuru() {
+  const month = Number(document.getElementById("rekapBulan").value);
+  const year = Number(document.getElementById("rekapTahun").value);
+  
+  const monthsIndo = ["JANUARI", "FEBRUARI", "MARET", "APRIL", "MEI", "JUNI", "JULI", "AGUSTUS", "SEPTEMBER", "OKTOBER", "NOVEMBER", "DESEMBER"];
+  const daysIndo = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
+  
+  const monthlyLogs = state.attendance.filter(log => {
+    const logDate = new Date(log.date);
+    return (logDate.getMonth() + 1) === month && logDate.getFullYear() === year;
+  });
+  
+  const isGuru = state.currentUser && state.currentUser.role === "guru";
+  let teachersToShow = state.teachers.filter(t => t.status === 'aktif');
+  if (isGuru) {
+    teachersToShow = state.teachers.filter(t => t.id === state.currentUser.id);
+  }
+  
+  if (teachersToShow.length === 0) {
+    alert("Tidak ada data guru untuk dicetak.");
+    return;
+  }
+  
+  const container = document.getElementById('printRekapArea');
+  container.innerHTML = '';
+  
+  teachersToShow.forEach(teacher => {
+    const teacherLogs = monthlyLogs
+      .filter(log => log.teacherId === teacher.id)
+      .sort((a, b) => new Date(a.date) - new Date(b.date));
+    
+    // Build table rows from attendance data
+    let tableRows = '';
+    teacherLogs.forEach((log, idx) => {
+      const d = new Date(log.date);
+      const dayName = daysIndo[d.getDay()];
+      const dateStr = `${dayName}, ${d.getDate()}/${month}/${String(year).slice(-2)}`;
+      
+      let kelasMapel = '-';
+      if (log.status === 'Hadir') {
+        kelasMapel = log.class || teacher.subject;
+      } else {
+        kelasMapel = log.status;
+      }
+      
+      const jpStr = log.status === 'Hadir' ? log.jp : '-';
+      const sigHtml = log.signature ? `<img src="${log.signature}" alt="TTD">` : '';
+      
+      tableRows += `<tr>
+        <td>${idx + 1}</td>
+        <td class="text-left">${dateStr}</td>
+        <td>-</td>
+        <td>-</td>
+        <td>${kelasMapel}</td>
+        <td>${jpStr}</td>
+        <td class="td-sig">${sigHtml}</td>
+      </tr>`;
+    });
+    
+    // Fill empty rows to reach at least 20 rows
+    const minRows = 20;
+    for (let i = teacherLogs.length; i < minRows; i++) {
+      tableRows += `<tr>
+        <td class="td-empty">${i + 1}</td>
+        <td class="td-empty"></td>
+        <td class="td-empty"></td>
+        <td class="td-empty"></td>
+        <td class="td-empty"></td>
+        <td class="td-empty"></td>
+        <td class="td-empty"></td>
+      </tr>`;
+    }
+    
+    const pageHtml = `
+      <div class="print-rekap-page">
+        <div class="print-rekap-header">
+          <img src="school-logo.png" class="print-logo" alt="Logo">
+          <div class="print-header-text">
+            <div class="print-yayasan">Yayasan Tri Dharma Tegal</div>
+            <div class="print-school-name">${state.settings.schoolName}</div>
+            <div class="print-school-subtitle">( SEKOLAH RAMAH ANAK, TERAKREDITASI "B" )</div>
+            <div class="print-school-address">Alamat: ${state.settings.schoolAddress}</div>
+            <div class="print-school-email">Surel: smpthhk.tegal@gmail.com</div>
+          </div>
+        </div>
+        
+        <div class="print-rekap-title">
+          <strong>DAFTAR HADIR GURU</strong><br>
+          BULAN : ${monthsIndo[month - 1]} ${year}
+        </div>
+        
+        <div class="print-rekap-info">
+          <span>Nama : <strong>${teacher.name}</strong></span>
+        </div>
+        
+        <table class="print-rekap-table">
+          <thead>
+            <tr>
+              <th rowspan="2" style="width:30px;">NO</th>
+              <th rowspan="2" style="width:140px;">HARI TANGGAL</th>
+              <th colspan="2">WAKTU</th>
+              <th rowspan="2">KELAS /<br>MAPEL</th>
+              <th rowspan="2" style="width:35px;">JP</th>
+              <th rowspan="2" style="width:100px;">TANDA TANGAN</th>
+            </tr>
+            <tr>
+              <th style="width:55px;">DATANG</th>
+              <th style="width:55px;">PULANG</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${tableRows}
+          </tbody>
+        </table>
+        
+        <div class="print-rekap-footer">
+          <div class="print-rekap-sig-box">
+            <div>Mengetahui,</div>
+            <div>Pimpinan Sekolah</div>
+            <div class="print-sig-space"></div>
+            <div class="print-sig-name">${state.settings.treasurerName}</div>
+          </div>
+        </div>
+      </div>
+    `;
+    
+    container.innerHTML += pageHtml;
+  });
+  
+  // Trigger print with rekap mode
+  document.body.classList.add('printing-rekap');
+  
+  setTimeout(() => {
+    window.print();
+  }, 200);
+  
+  // Cleanup after print
+  const cleanup = () => {
+    document.body.classList.remove('printing-rekap');
+  };
+  window.addEventListener('afterprint', cleanup, { once: true });
+  setTimeout(cleanup, 5000);
 }
 
 // CSV Export for Recap Table
@@ -1826,6 +2151,7 @@ function setupEventListeners() {
     document.getElementById("presensiId").value = "";
     document.getElementById("presensiTanggal").value = new Date().toISOString().split('T')[0];
     togglePresensiFormFields("Hadir");
+    if (signaturePadInstance) signaturePadInstance.clear();
   });
   
   // Save log
@@ -1850,16 +2176,19 @@ function setupEventListeners() {
       if (logId) {
         // Edit existing log
         if (isSupabaseConfigured()) {
+          const sigData = signaturePadInstance ? signaturePadInstance.toDataURL() : '';
+          const updatePayload = {
+            teacher_id: tId,
+            date: dateVal,
+            status: statusVal,
+            jp: jpVal,
+            class: classVal,
+            topic: topicVal
+          };
+          if (sigData) updatePayload.signature = sigData;
           const { error } = await supabaseClient
             .from("attendance")
-            .update({
-              teacher_id: tId,
-              date: dateVal,
-              status: statusVal,
-              jp: jpVal,
-              class: classVal,
-              topic: topicVal
-            })
+            .update(updatePayload)
             .eq("id", logId);
             
           if (error) throw error;
@@ -1867,6 +2196,7 @@ function setupEventListeners() {
         
         const idx = state.attendance.findIndex(log => log.id === logId);
         if (idx !== -1) {
+          const sigData = signaturePadInstance ? signaturePadInstance.toDataURL() : '';
           state.attendance[idx] = {
             id: logId,
             teacherId: tId,
@@ -1874,7 +2204,8 @@ function setupEventListeners() {
             status: statusVal,
             jp: jpVal,
             class: classVal,
-            topic: topicVal
+            topic: topicVal,
+            signature: sigData || state.attendance[idx].signature || ''
           };
         }
       } else {
@@ -1888,18 +2219,22 @@ function setupEventListeners() {
         
         const newLogId = "log_" + Date.now();
         
+        const sigData = signaturePadInstance ? signaturePadInstance.toDataURL() : '';
+        
         if (isSupabaseConfigured()) {
+          const insertPayload = {
+            id: newLogId,
+            teacher_id: tId,
+            date: dateVal,
+            status: statusVal,
+            jp: jpVal,
+            class: classVal,
+            topic: topicVal
+          };
+          if (sigData) insertPayload.signature = sigData;
           const { error } = await supabaseClient
             .from("attendance")
-            .insert({
-              id: newLogId,
-              teacher_id: tId,
-              date: dateVal,
-              status: statusVal,
-              jp: jpVal,
-              class: classVal,
-              topic: topicVal
-            });
+            .insert(insertPayload);
             
           if (error) throw error;
         }
@@ -1912,7 +2247,8 @@ function setupEventListeners() {
           status: statusVal,
           jp: jpVal,
           class: classVal,
-          topic: topicVal
+          topic: topicVal,
+          signature: sigData
         });
       }
       
@@ -1937,9 +2273,9 @@ function setupEventListeners() {
   // Export CSV
   document.getElementById("btnExportRecapCSV").addEventListener("click", exportRecapToCSV);
   
-  // Print Table
+  // Print Rekap Per Guru (Daftar Hadir Guru)
   document.getElementById("btnPrintRecapTable").addEventListener("click", () => {
-    window.print();
+    generatePrintRekapPerGuru();
   });
   
   // --- Slip Gaji Modal Handlers ---
@@ -1999,6 +2335,11 @@ function setupEventListeners() {
   // Backup / Restore Handlers
   document.getElementById("btnBackupData").addEventListener("click", exportBackupJSON);
   document.getElementById("importFileInput").addEventListener("change", importRestoreJSON);
+  
+  // Signature Pad Clear Button
+  document.getElementById("btnClearSignature").addEventListener("click", () => {
+    if (signaturePadInstance) signaturePadInstance.clear();
+  });
   document.getElementById("btnLoadDemoData").addEventListener("click", () => loadSampleData(true));
   document.getElementById("btnResetAllData").addEventListener("click", resetAllData);
   
