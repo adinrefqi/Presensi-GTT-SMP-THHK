@@ -2154,6 +2154,35 @@ function setupEventListeners() {
     if (signaturePadInstance) signaturePadInstance.clear();
   });
   
+async function saveAttendanceToSupabase(payload, isUpdate = false, logId = null) {
+  if (!isSupabaseConfigured()) return;
+  
+  let res;
+  if (isUpdate) {
+    res = await supabaseClient.from("attendance").update(payload).eq("id", logId);
+  } else {
+    res = await supabaseClient.from("attendance").insert(payload);
+  }
+  
+  if (res.error) {
+    const errStr = String(res.error.message || res.error.details || JSON.stringify(res.error)).toLowerCase();
+    // Fallback: If signature column does not exist in Supabase schema yet
+    if (payload.signature && (errStr.includes("signature") || errStr.includes("schema cache"))) {
+      console.warn("Kolom 'signature' belum ada di Supabase. Menyimpan data presensi tanpa signature ke Supabase...");
+      delete payload.signature;
+      if (isUpdate) {
+        const retryRes = await supabaseClient.from("attendance").update(payload).eq("id", logId);
+        if (retryRes.error) throw retryRes.error;
+      } else {
+        const retryRes = await supabaseClient.from("attendance").insert(payload);
+        if (retryRes.error) throw retryRes.error;
+      }
+    } else {
+      throw res.error;
+    }
+  }
+}
+
   // Save log
   document.getElementById("presensiForm").addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -2173,30 +2202,24 @@ function setupEventListeners() {
     
     showLoadingOverlay(true);
     try {
+      const sigData = signaturePadInstance ? signaturePadInstance.toDataURL() : '';
+
       if (logId) {
         // Edit existing log
-        if (isSupabaseConfigured()) {
-          const sigData = signaturePadInstance ? signaturePadInstance.toDataURL() : '';
-          const updatePayload = {
-            teacher_id: tId,
-            date: dateVal,
-            status: statusVal,
-            jp: jpVal,
-            class: classVal,
-            topic: topicVal
-          };
-          if (sigData) updatePayload.signature = sigData;
-          const { error } = await supabaseClient
-            .from("attendance")
-            .update(updatePayload)
-            .eq("id", logId);
-            
-          if (error) throw error;
-        }
+        const updatePayload = {
+          teacher_id: tId,
+          date: dateVal,
+          status: statusVal,
+          jp: jpVal,
+          class: classVal,
+          topic: topicVal
+        };
+        if (sigData) updatePayload.signature = sigData;
+        
+        await saveAttendanceToSupabase(updatePayload, true, logId);
         
         const idx = state.attendance.findIndex(log => log.id === logId);
         if (idx !== -1) {
-          const sigData = signaturePadInstance ? signaturePadInstance.toDataURL() : '';
           state.attendance[idx] = {
             id: logId,
             teacherId: tId,
@@ -2219,25 +2242,18 @@ function setupEventListeners() {
         
         const newLogId = "log_" + Date.now();
         
-        const sigData = signaturePadInstance ? signaturePadInstance.toDataURL() : '';
+        const insertPayload = {
+          id: newLogId,
+          teacher_id: tId,
+          date: dateVal,
+          status: statusVal,
+          jp: jpVal,
+          class: classVal,
+          topic: topicVal
+        };
+        if (sigData) insertPayload.signature = sigData;
         
-        if (isSupabaseConfigured()) {
-          const insertPayload = {
-            id: newLogId,
-            teacher_id: tId,
-            date: dateVal,
-            status: statusVal,
-            jp: jpVal,
-            class: classVal,
-            topic: topicVal
-          };
-          if (sigData) insertPayload.signature = sigData;
-          const { error } = await supabaseClient
-            .from("attendance")
-            .insert(insertPayload);
-            
-          if (error) throw error;
-        }
+        await saveAttendanceToSupabase(insertPayload, false);
         
         // New log
         state.attendance.push({
@@ -2260,7 +2276,7 @@ function setupEventListeners() {
       alert("Data presensi berhasil disimpan!");
     } catch (err) {
       console.error("Gagal menyimpan presensi:", err);
-      alert("Gagal menyimpan ke database: " + err.message);
+      alert("Gagal menyimpan ke database: " + getSupabaseErrorMessage(err));
     } finally {
       showLoadingOverlay(false);
     }

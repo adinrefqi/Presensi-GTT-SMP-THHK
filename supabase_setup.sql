@@ -28,9 +28,13 @@ CREATE TABLE IF NOT EXISTS public.attendance (
     jp INT NOT NULL DEFAULT 0,
     class VARCHAR(100),
     topic TEXT,
+    signature TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
     CONSTRAINT unique_teacher_date UNIQUE (teacher_id, date)
 );
+
+-- Migrasi untuk menambahkan kolom signature pada tabel attendance jika belum ada
+ALTER TABLE public.attendance ADD COLUMN IF NOT EXISTS signature TEXT;
 
 -- 4. Tabel Pengaturan Sekolah
 CREATE TABLE IF NOT EXISTS public.settings (
