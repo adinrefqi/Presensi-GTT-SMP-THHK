@@ -1,4 +1,4 @@
-const CACHE_NAME = 'presensi-gtt-v7';
+const CACHE_NAME = 'presensi-gtt-v8';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
@@ -38,37 +38,43 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Fetch Event - Stale-while-revalidate for assets, Network-only/bypass for API
+// Fetch Event - Network-First for core local assets, Stale-while-revalidate for CDN
 self.addEventListener('fetch', (event) => {
   const requestUrl = new URL(event.request.url);
 
-  // Bypass caching for Supabase database/auth network requests
+  // Bypass caching for Supabase requests
   if (requestUrl.host.includes('supabase.co') || event.request.method !== 'GET') {
-    return; // Let the browser handle live database requests directly
+    return;
   }
 
-  // Handle local assets and CDN libraries
+  // Network-First for local HTML, CSS, JS
+  if (requestUrl.origin === location.origin) {
+    event.respondWith(
+      fetch(event.request)
+        .then((networkResponse) => {
+          if (networkResponse.status === 200) {
+            const responseClone = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseClone));
+          }
+          return networkResponse;
+        })
+        .catch(() => caches.match(event.request).then((cached) => cached || caches.match('/index.html')))
+    );
+    return;
+  }
+
+  // Stale-while-revalidate for CDN assets
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
       if (cachedResponse) {
-        // Fetch new version in the background to update the cache
         fetch(event.request).then((networkResponse) => {
           if (networkResponse.status === 200) {
             caches.open(CACHE_NAME).then((cache) => cache.put(event.request, networkResponse));
           }
-        }).catch((err) => console.log('[Service Worker] Background fetch failed (offline):', err));
-
-        // Return the cached version immediately for instant load
+        }).catch(() => {});
         return cachedResponse;
       }
-
-      // If not cached, fetch from network
-      return fetch(event.request).catch(() => {
-        // Fallback for offline if navigating html
-        if (event.request.headers.get('accept').includes('text/html')) {
-          return caches.match('/index.html');
-        }
-      });
+      return fetch(event.request);
     })
   );
 });

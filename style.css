@@ -652,11 +652,11 @@ tbody tr:hover { background: var(--primary-light); }
 }
 
 @media print {
-  body { color: #000 !important; background: #fff !important; }
+  body { color: #000 !important; background: #fff !important; margin: 0 !important; padding: 0 !important; }
 
   /* === DEFAULT PRINT MODE (Slip Gaji) === */
-  .sidebar, .top-header, .mobile-brand-header, .btn, .action-controls, .modal-header, .modal-footer { display: none !important; }
-  .main-content { padding: 0 !important; }
+  .sidebar, .top-header, .mobile-brand-header, .mobile-bottom-nav, .mobile-profile-trigger, .btn, .action-controls, .modal-header, .modal-footer { display: none !important; }
+  .main-content { padding: 0 !important; margin: 0 !important; }
   .modal { position: absolute !important; inset: 0 !important; display: block !important; padding: 0 !important; background: transparent !important; }
   .modal-content { max-width: 100% !important; max-height: none !important; border: 0 !important; box-shadow: none !important; }
   .slip-gaji-wrapper { width: 100% !important; padding: 0 !important; border: 0 !important; }
@@ -667,6 +667,8 @@ tbody tr:hover { background: var(--primary-light); }
   body.printing-rekap .app-container,
   body.printing-rekap .login-container,
   body.printing-rekap .modal,
+  body.printing-rekap .mobile-bottom-nav,
+  body.printing-rekap .mobile-profile-card,
   body.printing-rekap #appLoadingOverlay { display: none !important; }
 
   body.printing-rekap #printRekapArea {
@@ -675,9 +677,14 @@ tbody tr:hover { background: var(--primary-light); }
     top: 0;
     left: 0;
     width: 100%;
+    margin: 0;
+    padding: 0;
   }
   body.printing-rekap #printRekapArea .print-rekap-page {
     display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
   }
   body.printing-rekap .print-logo,
   body.printing-rekap .print-rekap-table td.td-sig img {
@@ -686,6 +693,7 @@ tbody tr:hover { background: var(--primary-light); }
   }
 
   @page {
+    size: portrait;
     margin: 8mm;
   }
 }
