@@ -550,9 +550,17 @@ function initDateDisplay() {
   document.getElementById("presensiTanggal").value = dateStr;
   document.getElementById("filterPresensiTanggal").value = dateStr;
   
-  // Set default rekap month/year filter to current
-  document.getElementById("rekapBulan").value = today.getMonth() + 1;
-  document.getElementById("rekapTahun").value = today.getFullYear();
+  // Set default rekap & history month/year filter to current
+  const currentMonthVal = today.getMonth() + 1;
+  const currentYearVal = today.getFullYear();
+  
+  document.getElementById("rekapBulan").value = currentMonthVal;
+  document.getElementById("rekapTahun").value = currentYearVal;
+  
+  const filterBulanEl = document.getElementById("filterPresensiBulan");
+  const filterTahunEl = document.getElementById("filterPresensiTahun");
+  if (filterBulanEl) filterBulanEl.value = currentMonthVal;
+  if (filterTahunEl) filterTahunEl.value = currentYearVal;
 }
 
 // SAMPLE DATA GENERATOR
@@ -1432,19 +1440,66 @@ function renderDetailedLogs() {
   const container = document.getElementById("detailLogsList");
   container.innerHTML = "";
   
-  const selectedDate = document.getElementById("filterPresensiTanggal").value;
+  const modeEl = document.getElementById("filterPresensiMode");
+  const mode = modeEl ? modeEl.value : "bulanan";
   const isGuru = state.currentUser && state.currentUser.role === "guru";
   
-  let filteredLogs = state.attendance.filter(log => log.date === selectedDate);
+  const monthWrapper = document.getElementById("filterPresensiBulanWrapper");
+  const dateWrapper = document.getElementById("filterPresensiTanggalWrapper");
+  const summaryBox = document.getElementById("presensiHistorySummary");
+  
+  let filteredLogs = [];
+  let periodTitleText = "";
+  
+  if (mode === "harian") {
+    if (monthWrapper) monthWrapper.style.display = "none";
+    if (dateWrapper) dateWrapper.style.display = "block";
+    
+    const selectedDate = document.getElementById("filterPresensiTanggal").value;
+    filteredLogs = state.attendance.filter(log => log.date === selectedDate);
+    periodTitleText = `Presensi ${formatIndonesianDate(selectedDate)}`;
+  } else {
+    // Monthly mode (default)
+    if (monthWrapper) monthWrapper.style.display = "flex";
+    if (dateWrapper) dateWrapper.style.display = "none";
+    
+    const filterMonth = Number(document.getElementById("filterPresensiBulan").value);
+    const filterYear = Number(document.getElementById("filterPresensiTahun").value);
+    const monthsIndo = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+    
+    filteredLogs = state.attendance.filter(log => isLogInMonthYear(log.date, filterMonth, filterYear));
+    periodTitleText = `Histori Bulan ${monthsIndo[filterMonth - 1]} ${filterYear}`;
+  }
+  
   if (isGuru) {
     filteredLogs = filteredLogs.filter(log => log.teacherId === state.currentUser.id);
+  }
+  
+  // Sort logs by date descending (newest first)
+  filteredLogs.sort((a, b) => new Date(b.date) - new Date(a.date));
+  
+  // Summary Stats
+  const countHadir = filteredLogs.filter(l => l.status === "Hadir").length;
+  const totalJP = filteredLogs.filter(l => l.status === "Hadir").reduce((sum, l) => sum + Number(l.jp), 0);
+  const countSakit = filteredLogs.filter(l => l.status === "Sakit").length;
+  const countIzin = filteredLogs.filter(l => l.status === "Izin").length;
+  const countAlpa = filteredLogs.filter(l => l.status === "Alpa").length;
+  
+  if (summaryBox) {
+    document.getElementById("summaryText").textContent = periodTitleText;
+    document.getElementById("summaryBadges").innerHTML = `
+      <span class="badge badge-active" style="font-size: 0.75rem;">${countHadir} Hadir (${totalJP} JP)</span>
+      ${countSakit > 0 ? `<span class="badge badge-warning" style="font-size: 0.75rem;">${countSakit} Sakit</span>` : ''}
+      ${countIzin > 0 ? `<span class="badge badge-info" style="font-size: 0.75rem;">${countIzin} Izin</span>` : ''}
+      ${countAlpa > 0 ? `<span class="badge badge-inactive" style="font-size: 0.75rem;">${countAlpa} Alpa</span>` : ''}
+    `;
   }
   
   if (filteredLogs.length === 0) {
     container.innerHTML = `
       <div class="empty-state">
         <i data-lucide="calendar-x"></i>
-        <p>Tidak ada riwayat presensi untuk tanggal ${formatIndonesianDate(selectedDate)}.</p>
+        <p>Tidak ada riwayat presensi untuk periode ini.</p>
       </div>
     `;
     safeCreateIcons();
@@ -1460,26 +1515,31 @@ function renderDetailedLogs() {
     div.className = "recent-log-item";
     div.style.flexDirection = 'column';
     div.style.alignItems = 'stretch';
+    div.style.gap = '6px';
+    
     div.innerHTML = `
       <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
-        <div class="log-info-meta">
+        <div class="log-info-meta" style="flex:1;">
           <span class="log-teacher-name" style="font-size: 0.95rem;">${teacherName}</span>
           <span class="log-subject-jp" style="font-size: 0.8rem;">
-            Mapel: ${subject} • <strong class="text-primary-color">${log.status}</strong> 
-            ${log.status === 'Hadir' ? '• ' + log.jp + ' JP • Kelas: ' + log.class : ''}
+            ${formatIndonesianDate(log.date)} • ${subject} • <strong class="text-primary-color">${log.status}</strong> 
+            ${log.status === 'Hadir' ? '• ' + log.jp + ' JP • Kelas: ' + (log.class || '-') : ''}
           </span>
           ${log.status === 'Hadir' && log.topic ? `<span class="log-date-time" style="font-size: 0.75rem; margin-top:2px;">KBM: "${log.topic}"</span>` : ''}
         </div>
-        <div class="actions-cell">
-          <button class="icon-btn edit" onclick="editLog('${log.id}')" title="Edit Presensi">
-            <i data-lucide="edit-3"></i>
-          </button>
-          <button class="icon-btn delete" onclick="deleteLog('${log.id}')" title="Hapus Presensi">
-            <i data-lucide="trash-2"></i>
-          </button>
-        </div>
+        <span class="badge badge-${log.status.toLowerCase()}">${log.status}</span>
+        ${(!isGuru || (state.currentUser && state.currentUser.role === 'admin')) ? `
+          <div class="actions-cell">
+            <button class="icon-btn edit" onclick="editLog('${log.id}')" title="Edit Presensi">
+              <i data-lucide="edit-3"></i>
+            </button>
+            <button class="icon-btn delete" onclick="deleteLog('${log.id}')" title="Hapus Presensi">
+              <i data-lucide="trash-2"></i>
+            </button>
+          </div>
+        ` : ''}
       </div>
-      ${log.signature ? `<div style="display:flex;align-items:center;gap:6px;margin-top:4px;"><span style="font-size:.66rem;color:var(--text-muted);">TTD:</span><img src="${log.signature}" alt="Tanda tangan" class="signature-preview"></div>` : ''}
+      ${log.signature ? `<div style="display:flex;align-items:center;gap:6px;margin-top:2px;"><span style="font-size:.66rem;color:var(--text-muted);">TTD:</span><img src="${log.signature}" alt="Tanda tangan" class="signature-preview"></div>` : ''}
     `;
     container.appendChild(div);
   });
@@ -2365,8 +2425,16 @@ function setupEventListeners() {
     togglePresensiFormFields(e.target.value);
   });
   
-  // Date logs filter
-  document.getElementById("filterPresensiTanggal").addEventListener("change", renderDetailedLogs);
+  // Attendance logs filter listeners
+  const filterModeEl = document.getElementById("filterPresensiMode");
+  const filterBulanEl = document.getElementById("filterPresensiBulan");
+  const filterTahunEl = document.getElementById("filterPresensiTahun");
+  const filterTanggalEl = document.getElementById("filterPresensiTanggal");
+  
+  if (filterModeEl) filterModeEl.addEventListener("change", renderDetailedLogs);
+  if (filterBulanEl) filterBulanEl.addEventListener("change", renderDetailedLogs);
+  if (filterTahunEl) filterTahunEl.addEventListener("change", renderDetailedLogs);
+  if (filterTanggalEl) filterTanggalEl.addEventListener("change", renderDetailedLogs);
   
   // Reset Form button
   document.getElementById("btnResetPresensiForm").addEventListener("click", () => {

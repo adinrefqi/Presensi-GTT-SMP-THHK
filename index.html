@@ -383,19 +383,58 @@
             </form>
           </div>
 
-          <!-- History Logs on Selected Date -->
+          <!-- History Logs on Selected Month / Date -->
           <div class="panel">
-            <div class="panel-header">
+            <div class="panel-header" style="flex-wrap: wrap; gap: 10px;">
               <h3 class="panel-title">
                 <i data-lucide="history"></i>
                 Riwayat Presensi
               </h3>
-              <div style="width: 150px;">
-                <input type="date" class="input-control btn-sm" id="filterPresensiTanggal">
+              
+              <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                <!-- Filter Mode Selector -->
+                <select id="filterPresensiMode" class="btn-sm input-control" style="width: auto; padding: 4px 8px; font-weight: 600;">
+                  <option value="bulanan" selected>Bulan ini</option>
+                  <option value="harian">Per Tanggal</option>
+                </select>
+                
+                <!-- Container for Month/Year Filter -->
+                <div id="filterPresensiBulanWrapper" style="display: flex; gap: 6px;">
+                  <select id="filterPresensiBulan" class="btn-sm input-control" style="width: 105px; padding: 4px 6px;">
+                    <option value="1">Januari</option>
+                    <option value="2">Februari</option>
+                    <option value="3">Maret</option>
+                    <option value="4">April</option>
+                    <option value="5">Mei</option>
+                    <option value="6">Juni</option>
+                    <option value="7">Juli</option>
+                    <option value="8">Agustus</option>
+                    <option value="9">September</option>
+                    <option value="10">Oktober</option>
+                    <option value="11">November</option>
+                    <option value="12">Desember</option>
+                  </select>
+                  <select id="filterPresensiTahun" class="btn-sm input-control" style="width: 75px; padding: 4px 6px;">
+                    <option value="2026">2026</option>
+                    <option value="2027">2027</option>
+                    <option value="2028">2028</option>
+                  </select>
+                </div>
+
+                <!-- Container for Single Date Filter -->
+                <div id="filterPresensiTanggalWrapper" style="display: none; width: 140px;">
+                  <input type="date" class="input-control btn-sm" id="filterPresensiTanggal">
+                </div>
               </div>
             </div>
             
-            <div class="recent-logs-list" id="detailLogsList" style="max-height: 480px;">
+            <!-- Summary Banner for History View -->
+            <div id="presensiHistorySummary" style="background: rgba(13, 148, 136, 0.08); border: 1px solid rgba(13, 148, 136, 0.2); border-radius: 8px; padding: 8px 12px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px; font-size: 0.85rem; font-weight: 600;">
+              <span id="summaryText">Histori Presensi</span>
+              <div id="summaryBadges" style="display: flex; gap: 6px; flex-wrap: wrap;"></div>
+            </div>
+
+            <div class="recent-logs-list" id="detailLogsList" style="max-height: 480px; overflow-y: auto;">
               <!-- Rendered dynamically -->
             </div>
           </div>
