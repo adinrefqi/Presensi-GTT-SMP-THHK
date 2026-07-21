@@ -2015,6 +2015,10 @@ async function generatePrintRekapPerGuru() {
   const container = document.getElementById('printRekapArea');
   container.innerHTML = '';
   
+  const schoolNameDisplay = state.settings.schoolName && state.settings.schoolName.toUpperCase().includes("TUNAS") 
+    ? state.settings.schoolName 
+    : "SMP TUNAS HIDUP HARAPAN KITA";
+
   teachersToShow.forEach(teacher => {
     const teacherLogs = monthlyLogs
       .filter(log => log.teacherId === teacher.id)
@@ -2023,9 +2027,10 @@ async function generatePrintRekapPerGuru() {
     // Build table rows from attendance data
     let tableRows = '';
     teacherLogs.forEach((log, idx) => {
-      const d = new Date(log.date);
-      const dayName = daysIndo[d.getDay()];
-      const dateStr = `${dayName}, ${d.getDate()}/${month}/${String(year).slice(-2)}`;
+      const dParts = log.date.split('-');
+      const dObj = new Date(Number(dParts[0]), Number(dParts[1]) - 1, Number(dParts[2]));
+      const dayName = daysIndo[dObj.getDay()];
+      const dateStr = `${dayName}, ${dObj.getDate()}.${dObj.getMonth() + 1}.${String(dObj.getFullYear()).slice(-2)}`;
       
       let kelasMapel = '-';
       if (log.status === 'Hadir') {
@@ -2034,25 +2039,25 @@ async function generatePrintRekapPerGuru() {
         kelasMapel = log.status;
       }
       
-      const jpStr = log.status === 'Hadir' ? log.jp : '-';
+      const jpStr = log.status === 'Hadir' ? `${log.jp} jp` : '-';
       const sigHtml = log.signature ? `<img src="${log.signature}" alt="TTD">` : '';
       
       tableRows += `<tr>
-        <td>${idx + 1}</td>
-        <td class="text-left">${dateStr}</td>
-        <td>-</td>
-        <td>-</td>
-        <td>${kelasMapel}</td>
-        <td>${jpStr}</td>
-        <td class="td-sig">${sigHtml}</td>
+        <td style="text-align: center;">${idx + 1}</td>
+        <td class="text-left" style="text-align: left; padding-left: 8px;">${dateStr}</td>
+        <td></td>
+        <td></td>
+        <td style="text-align: center;">${kelasMapel}</td>
+        <td style="text-align: center;">${jpStr}</td>
+        <td class="td-sig" style="text-align: center;">${sigHtml}</td>
       </tr>`;
     });
     
-    // Fill empty rows to reach at least 20 rows
-    const minRows = 20;
+    // Fill empty rows to reach at least 22 rows to fill the page grid like physical form
+    const minRows = 22;
     for (let i = teacherLogs.length; i < minRows; i++) {
       tableRows += `<tr>
-        <td class="td-empty">${i + 1}</td>
+        <td class="td-empty" style="text-align: center;">${i + 1}</td>
         <td class="td-empty"></td>
         <td class="td-empty"></td>
         <td class="td-empty"></td>
@@ -2063,40 +2068,40 @@ async function generatePrintRekapPerGuru() {
     }
     
     const pageHtml = `
-      <div class="print-rekap-page">
-        <div class="print-rekap-header">
-          <img src="school-logo.png" class="print-logo" alt="Logo">
-          <div class="print-header-text">
-            <div class="print-yayasan">Yayasan Tri Dharma Tegal</div>
-            <div class="print-school-name">${state.settings.schoolName}</div>
-            <div class="print-school-subtitle">( SEKOLAH RAMAH ANAK, TERAKREDITASI "B" )</div>
-            <div class="print-school-address">Alamat: ${state.settings.schoolAddress}</div>
-            <div class="print-school-email">Surel: smpthhk.tegal@gmail.com</div>
+      <div class="print-rekap-page" style="page-break-after: always; padding: 10px 15px;">
+        <div class="print-rekap-header" style="display: flex; align-items: center; gap: 14px; padding-bottom: 8px; border-bottom: 3px double #000; margin-bottom: 10px;">
+          <img src="school-logo.png" class="print-logo" alt="Logo" style="width: 60px; height: 60px; object-fit: contain;">
+          <div class="print-header-text" style="flex: 1; text-align: center; line-height: 1.3;">
+            <div class="print-yayasan" style="font-size: 11pt; font-weight: bold;">YAYASAN TRI DHARMA TEGAL</div>
+            <div class="print-school-name" style="font-size: 13.5pt; font-weight: bold; text-transform: uppercase;">${schoolNameDisplay}</div>
+            <div class="print-school-subtitle" style="font-size: 9pt; font-weight: bold;">( SEKOLAH RAMAH ANAK, TERAKREDITASI "B" )</div>
+            <div class="print-school-address" style="font-size: 8pt;">Alamat : Jalan Gurami Nomor 6, Telepon (0283) 6146846, Kota Tegal</div>
+            <div class="print-school-email" style="font-size: 8pt;">Surel : smpthhk.tegal@gmail.com</div>
           </div>
         </div>
         
-        <div class="print-rekap-title">
-          <strong>DAFTAR HADIR GURU</strong><br>
-          BULAN : ${monthsIndo[month - 1]} ${year}
+        <div class="print-rekap-title" style="text-align: center; margin-top: 8px; margin-bottom: 10px; line-height: 1.4;">
+          <strong style="font-size: 12pt; text-transform: uppercase;">DAFTAR HADIR GURU</strong><br>
+          <span style="font-size: 10pt; font-weight: bold;">BULAN : ${monthsIndo[month - 1]} ${year}</span>
         </div>
         
-        <div class="print-rekap-info">
+        <div class="print-rekap-info" style="margin-bottom: 8px; font-size: 10pt;">
           <span>Nama : <strong>${teacher.name}</strong></span>
         </div>
         
-        <table class="print-rekap-table">
+        <table class="print-rekap-table" style="width: 100%; border-collapse: collapse; font-size: 9.5pt;">
           <thead>
             <tr>
-              <th rowspan="2" style="width:30px;">NO</th>
-              <th rowspan="2" style="width:140px;">HARI TANGGAL</th>
-              <th colspan="2">WAKTU</th>
-              <th rowspan="2">KELAS /<br>MAPEL</th>
-              <th rowspan="2" style="width:35px;">JP</th>
-              <th rowspan="2" style="width:100px;">TANDA TANGAN</th>
+              <th rowspan="2" style="width: 32px; border: 1px solid #000; padding: 4px; text-align: center;">NO</th>
+              <th rowspan="2" style="width: 160px; border: 1px solid #000; padding: 4px; text-align: center;">HARI, TANGGAL</th>
+              <th colspan="2" style="border: 1px solid #000; padding: 4px; text-align: center;">WAKTU</th>
+              <th rowspan="2" style="border: 1px solid #000; padding: 4px; text-align: center;">KELAS / MAPEL</th>
+              <th rowspan="2" style="width: 45px; border: 1px solid #000; padding: 4px; text-align: center;">JP</th>
+              <th rowspan="2" style="width: 130px; border: 1px solid #000; padding: 4px; text-align: center;">TANDA TANGAN</th>
             </tr>
             <tr>
-              <th style="width:55px;">DATANG</th>
-              <th style="width:55px;">PULANG</th>
+              <th style="width: 65px; border: 1px solid #000; padding: 4px; text-align: center;">DATANG</th>
+              <th style="width: 65px; border: 1px solid #000; padding: 4px; text-align: center;">PULANG</th>
             </tr>
           </thead>
           <tbody>
@@ -2104,12 +2109,12 @@ async function generatePrintRekapPerGuru() {
           </tbody>
         </table>
         
-        <div class="print-rekap-footer">
-          <div class="print-rekap-sig-box">
+        <div class="print-rekap-footer" style="display: flex; justify-content: flex-end; margin-top: 20px; font-size: 10pt;">
+          <div class="print-rekap-sig-box" style="text-align: center; min-width: 210px;">
             <div>Mengetahui,</div>
-            <div>Pimpinan Sekolah</div>
-            <div class="print-sig-space"></div>
-            <div class="print-sig-name">${state.settings.treasurerName}</div>
+            <div>Pemilik Sekolah</div>
+            <div class="print-sig-space" style="height: 55px;"></div>
+            <div class="print-sig-name" style="font-weight: bold; text-decoration: underline;">${state.settings.treasurerName}</div>
           </div>
         </div>
       </div>
