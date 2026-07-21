@@ -272,6 +272,7 @@ async function loadData() {
       }));
     }
     
+    sanitizeTeachersState();
   } catch (err) {
     console.error("Gagal mengambil data dari Supabase:", {
       message: err.message,
@@ -279,7 +280,7 @@ async function loadData() {
       originalError: err.originalError
     });
     alert(
-      "Data online belum dapat dimuat. Aplikasi akan menggunakan data lokal sementara.\\n\\n" +
+      "Data online belum dapat dimuat. Aplikasi akan menggunakan data lokal sementara.\n\n" +
       "Penyebab: " + getSupabaseErrorMessage(err)
     );
     loadDataFromStorage();
@@ -317,11 +318,29 @@ function loadDataFromStorage() {
   if (state.teachers.length === 0) {
     loadSampleData(false);
   }
+  
+  sanitizeTeachersState();
+}
+
+// SANITIZE SENSITIVE DATA FROM STATE
+function sanitizeTeachersState() {
+  if (!state.currentUser || state.currentUser.role !== "admin") {
+    state.teachers.forEach(t => {
+      delete t.password;
+    });
+  }
 }
 
 // SAVE DATA
 function saveData() {
-  localStorage.setItem("gtt_teachers", JSON.stringify(state.teachers));
+  const safeTeachers = state.teachers.map(t => {
+    const copy = { ...t };
+    if (!state.currentUser || state.currentUser.role !== "admin") {
+      delete copy.password;
+    }
+    return copy;
+  });
+  localStorage.setItem("gtt_teachers", JSON.stringify(safeTeachers));
   localStorage.setItem("gtt_attendance", JSON.stringify(state.attendance));
   localStorage.setItem("gtt_settings", JSON.stringify(state.settings));
 }
@@ -660,13 +679,40 @@ async function loadSampleData(showAlert = true) {
     showLoadingOverlay(false);
   }
 }
-
 // ====================================================
 // AUTHENTICATION & ROLE-BASED ROUTING HELPERS
 // ====================================================
-function checkTeacherCredentials(usernameInput, passwordInput) {
+async function checkTeacherCredentials(usernameInput, passwordInput) {
   const username = usernameInput.trim().toLowerCase();
   const password = passwordInput.trim();
+  
+  if (isSupabaseConfigured()) {
+    try {
+      const { data: matchedTeachers } = await runSupabaseRequest(
+        () => supabaseClient
+          .from("teachers")
+          .select("*")
+          .eq("password", password)
+          .eq("status", "aktif"),
+        "Gagal verifikasi password guru"
+      );
+
+      if (matchedTeachers && matchedTeachers.length > 0) {
+        const teacher = matchedTeachers.find(t => {
+          const parts = t.name.split(/\s+/);
+          const firstWord = parts[0].replace(/[^a-zA-Z]/g, "").toLowerCase();
+          if (firstWord === "ws") {
+            const secondWord = parts[1] ? parts[1].replace(/[^a-zA-Z]/g, "").toLowerCase() : "";
+            return username === "ws" || username === secondWord;
+          }
+          return username === firstWord;
+        });
+        if (teacher) return teacher;
+      }
+    } catch (err) {
+      console.warn("Pemeriksaan password online gagal, mencoba pemeriksaan lokal:", err);
+    }
+  }
   
   return state.teachers.find(teacher => {
     if (teacher.status !== "aktif") return false;
@@ -732,9 +778,9 @@ async function login(usernameInput, passwordInput) {
     }
     
     // 2. Check Teacher
-    const teacher = checkTeacherCredentials(usernameInput, passwordInput);
+    const teacher = await checkTeacherCredentials(usernameInput, passwordInput);
     if (teacher) {
-      state.currentUser = { role: "guru", name: teacher.name, id: teacher.id, teacherData: teacher };
+      state.currentUser = { role: "guru", name: teacher.name, id: teacher.id };
       sessionStorage.setItem("gtt_session", JSON.stringify(state.currentUser));
       onLoginSuccess();
       return;
@@ -748,7 +794,7 @@ async function login(usernameInput, passwordInput) {
       originalError: err.originalError
     });
     alert(
-      "Login online belum dapat diproses. Periksa koneksi internet lalu coba lagi.\\n\\n" +
+      "Login online belum dapat diproses. Periksa koneksi internet lalu coba lagi.\n\n" +
       "Penyebab: " + getSupabaseErrorMessage(err)
     );
   } finally {
@@ -760,6 +806,8 @@ function onLoginSuccess() {
   document.getElementById("loginScreen").style.display = "none";
   document.getElementById("appMain").style.display = "flex";
   
+  sanitizeTeachersState();
+  saveData();
   applyRoleConstraints();
   renderAllViews();
 }
@@ -1022,7 +1070,7 @@ function renderDashboard() {
   
   if (isGuru) {
     const teacherId = state.currentUser.id;
-    const teacher = state.teachers.find(t => t.id === teacherId) || state.currentUser.teacherData;
+    const teacher = state.teachers.find(t => t.id === teacherId) || { name: state.currentUser.name, subject: "-", rate: 0, transport: 0 };
     
     // Stat Card 1: Mapel & Tarif
     totalGuruCard.querySelector(".stat-label").textContent = "Mata Pelajaran";
@@ -1348,7 +1396,7 @@ function renderPresensiForm() {
   
   if (isGuru) {
     const teacherId = state.currentUser.id;
-    const teacher = state.teachers.find(t => t.id === teacherId) || state.currentUser.teacherData;
+    const teacher = state.teachers.find(t => t.id === teacherId) || { name: state.currentUser.name, subject: "-" };
     
     const opt = document.createElement("option");
     opt.value = teacher.id;
