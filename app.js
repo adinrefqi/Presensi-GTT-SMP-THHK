@@ -528,6 +528,15 @@ function formatRupiah(number) {
   }).format(number);
 }
 
+function isLogInMonthYear(logDateStr, month, year) {
+  if (!logDateStr) return false;
+  const parts = String(logDateStr).split('-');
+  if (parts.length < 2) return false;
+  const logYear = Number(parts[0]);
+  const logMonth = Number(parts[1]);
+  return logMonth === Number(month) && logYear === Number(year);
+}
+
 function formatIndonesianDate(dateString) {
   const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
   return new Date(dateString).toLocaleDateString('id-ID', options);
@@ -1064,8 +1073,7 @@ function renderDashboard() {
   const currentYear = today.getFullYear();
   
   const currentMonthLogs = state.attendance.filter(log => {
-    const logDate = new Date(log.date);
-    return (logDate.getMonth() + 1) === currentMonth && logDate.getFullYear() === currentYear;
+    return isLogInMonthYear(log.date, currentMonth, currentYear);
   });
   
   if (isGuru) {
@@ -1559,10 +1567,7 @@ function renderRekapTable() {
   const filterYear = Number(document.getElementById("rekapTahun").value);
   
   // Filter logs for selected Month and Year
-  const monthlyLogs = state.attendance.filter(log => {
-    const logDate = new Date(log.date);
-    return (logDate.getMonth() + 1) === filterMonth && logDate.getFullYear() === filterYear;
-  });
+  const monthlyLogs = state.attendance.filter(log => isLogInMonthYear(log.date, filterMonth, filterYear));
   
   if (state.teachers.length === 0) {
     tbody.innerHTML = `
@@ -1629,10 +1634,7 @@ window.generateSlipGaji = function(teacherId, month, year) {
   const teacher = state.teachers.find(t => t.id === teacherId);
   if (!teacher) return;
   
-  const monthlyLogs = state.attendance.filter(log => {
-    const logDate = new Date(log.date);
-    return (logDate.getMonth() + 1) === month && logDate.getFullYear() === year;
-  });
+  const monthlyLogs = state.attendance.filter(log => isLogInMonthYear(log.date, month, year));
   
   const teacherLogs = monthlyLogs.filter(log => log.teacherId === teacher.id);
   
@@ -1824,19 +1826,180 @@ function importRestoreJSON(event) {
 }
 
 // ====================================================
+// PRINT REKAP GAJI (LAPORAN REKAPITULASI HONORARIUM & GAJI GTT)
+// ====================================================
+async function generatePrintRekapGaji() {
+  showLoadingOverlay(true);
+  try {
+    if (isSupabaseConfigured()) {
+      await loadData();
+    }
+  } catch (err) {
+    console.warn("Gagal memperbarui data sebelum mencetak rekap gaji:", err);
+  } finally {
+    showLoadingOverlay(false);
+  }
+
+  const month = Number(document.getElementById("rekapBulan").value);
+  const year = Number(document.getElementById("rekapTahun").value);
+  
+  const monthsIndo = ["JANUARI", "FEBRUARI", "MARET", "APRIL", "MEI", "JUNI", "JULI", "AGUSTUS", "SEPTEMBER", "OKTOBER", "NOVEMBER", "DESEMBER"];
+  const monthlyLogs = state.attendance.filter(log => isLogInMonthYear(log.date, month, year));
+  
+  const isGuru = state.currentUser && state.currentUser.role === "guru";
+  let teachersToShow = state.teachers.filter(t => t.status === 'aktif');
+  if (isGuru) {
+    teachersToShow = state.teachers.filter(t => t.id === state.currentUser.id);
+  }
+  
+  if (teachersToShow.length === 0) {
+    alert("Tidak ada data guru untuk dicetak.");
+    return;
+  }
+  
+  let totalHadirSemua = 0;
+  let totalJPSemua = 0;
+  let totalHonorJPSemua = 0;
+  let totalTransportSemua = 0;
+  let grandTotalSemua = 0;
+  
+  let tableRowsHtml = '';
+  teachersToShow.forEach((teacher, idx) => {
+    const teacherLogs = monthlyLogs.filter(log => log.teacherId === teacher.id);
+    const countHadir = teacherLogs.filter(log => log.status === "Hadir").length;
+    const countSakit = teacherLogs.filter(log => log.status === "Sakit").length;
+    const countIzin = teacherLogs.filter(log => log.status === "Izin").length;
+    const countAlpa = teacherLogs.filter(log => log.status === "Alpa").length;
+    
+    const totalJP = teacherLogs.reduce((sum, log) => sum + (log.status === "Hadir" ? Number(log.jp) : 0), 0);
+    const honorJP = totalJP * Number(teacher.rate);
+    const uangTransport = countHadir * Number(teacher.transport);
+    const totalGaji = honorJP + uangTransport;
+    
+    totalHadirSemua += countHadir;
+    totalJPSemua += totalJP;
+    totalHonorJPSemua += honorJP;
+    totalTransportSemua += uangTransport;
+    grandTotalSemua += totalGaji;
+    
+    const countOther = countSakit + countIzin + countAlpa;
+    const otherStr = countOther > 0 ? `${countSakit}S/${countIzin}I/${countAlpa}A` : '-';
+    
+    tableRowsHtml += `
+      <tr>
+        <td style="text-align: center;">${idx + 1}</td>
+        <td style="font-weight: bold;">${teacher.name}</td>
+        <td>${teacher.subject}</td>
+        <td style="text-align: center;">${countHadir} Hari</td>
+        <td style="text-align: center; font-size: 8.5pt; color: #64748b;">${otherStr}</td>
+        <td style="text-align: center;">${totalJP} JP</td>
+        <td style="text-align: right;">${formatRupiah(honorJP)}</td>
+        <td style="text-align: right;">${formatRupiah(uangTransport)}</td>
+        <td style="text-align: right; font-weight: bold;">${formatRupiah(totalGaji)}</td>
+      </tr>
+    `;
+  });
+  
+  const container = document.getElementById('printRekapArea');
+  container.innerHTML = `
+    <div class="print-rekap-page">
+      <div class="print-rekap-header">
+        <img src="school-logo.png" class="print-logo" alt="Logo">
+        <div class="print-header-text">
+          <div class="print-yayasan">Yayasan Tri Dharma Tegal</div>
+          <div class="print-school-name">${state.settings.schoolName}</div>
+          <div class="print-school-subtitle">( SEKOLAH RAMAH ANAK, TERAKREDITASI "B" )</div>
+          <div class="print-school-address">Alamat: ${state.settings.schoolAddress}</div>
+          <div class="print-school-email">Surel: smpthhk.tegal@gmail.com</div>
+        </div>
+      </div>
+      
+      <div class="print-rekap-title" style="margin-top: 14px; margin-bottom: 16px;">
+        <strong style="font-size: 12pt; text-transform: uppercase;">REKAPITULASI HONORARIUM GURU TIDAK TETAP (GTT)</strong><br>
+        <span style="font-size: 10pt;">PERIODE : ${monthsIndo[month - 1]} ${year}</span>
+      </div>
+      
+      <table class="print-rekap-table" style="width: 100%;">
+        <thead>
+          <tr>
+            <th style="width:30px;">NO</th>
+            <th>NAMA GTT</th>
+            <th>MAPEL</th>
+            <th style="width:55px;">HADIR</th>
+            <th style="width:55px;">KET.</th>
+            <th style="width:55px;">TOTAL JP</th>
+            <th style="width:100px;">HONOR JP</th>
+            <th style="width:100px;">TRANSPORT</th>
+            <th style="width:110px;">TOTAL GAJI</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${tableRowsHtml}
+          <tr style="font-weight: bold; background-color: #f1f5f9;">
+            <td colspan="3" style="text-align: center;">TOTAL KESELURUHAN</td>
+            <td style="text-align: center;">${totalHadirSemua} Hari</td>
+            <td>-</td>
+            <td style="text-align: center;">${totalJPSemua} JP</td>
+            <td style="text-align: right;">${formatRupiah(totalHonorJPSemua)}</td>
+            <td style="text-align: right;">${formatRupiah(totalTransportSemua)}</td>
+            <td style="text-align: right;">${formatRupiah(grandTotalSemua)}</td>
+          </tr>
+        </tbody>
+      </table>
+      
+      <div class="slip-signatures" style="margin-top: 35px;">
+        <div class="signature-box">
+          <div>Mengetahui,</div>
+          <div>Kepala Sekolah</div>
+          <div class="signature-space" style="height: 55px;"></div>
+          <div style="font-weight: bold; text-decoration: underline;">${state.settings.principalName}</div>
+          <div>NIP: ${state.settings.principalNip}</div>
+        </div>
+        <div class="signature-box">
+          <div>Tegal, ${new Date().toLocaleDateString('id-ID', {day: 'numeric', month: 'long', year: 'numeric'})}</div>
+          <div>Manager / Bendahara Sekolah</div>
+          <div class="signature-space" style="height: 55px;"></div>
+          <div style="font-weight: bold; text-decoration: underline;">${state.settings.treasurerName}</div>
+          <div>NIP: ${state.settings.treasurerNip}</div>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  document.body.classList.add('printing-rekap');
+  setTimeout(() => {
+    window.print();
+  }, 200);
+  
+  const cleanup = () => {
+    document.body.classList.remove('printing-rekap');
+  };
+  window.addEventListener('afterprint', cleanup, { once: true });
+  setTimeout(cleanup, 5000);
+}
+
+// ====================================================
 // PRINT REKAP PER GURU — DAFTAR HADIR GURU
 // ====================================================
-function generatePrintRekapPerGuru() {
+async function generatePrintRekapPerGuru() {
+  showLoadingOverlay(true);
+  try {
+    if (isSupabaseConfigured()) {
+      await loadData();
+    }
+  } catch (err) {
+    console.warn("Gagal memperbarui data sebelum mencetak absensi:", err);
+  } finally {
+    showLoadingOverlay(false);
+  }
+
   const month = Number(document.getElementById("rekapBulan").value);
   const year = Number(document.getElementById("rekapTahun").value);
   
   const monthsIndo = ["JANUARI", "FEBRUARI", "MARET", "APRIL", "MEI", "JUNI", "JULI", "AGUSTUS", "SEPTEMBER", "OKTOBER", "NOVEMBER", "DESEMBER"];
   const daysIndo = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
   
-  const monthlyLogs = state.attendance.filter(log => {
-    const logDate = new Date(log.date);
-    return (logDate.getMonth() + 1) === month && logDate.getFullYear() === year;
-  });
+  const monthlyLogs = state.attendance.filter(log => isLogInMonthYear(log.date, month, year));
   
   const isGuru = state.currentUser && state.currentUser.role === "guru";
   let teachersToShow = state.teachers.filter(t => t.status === 'aktif');
@@ -1975,10 +2138,7 @@ function exportRecapToCSV() {
   const month = Number(document.getElementById("rekapBulan").value);
   const year = Number(document.getElementById("rekapTahun").value);
   
-  const monthlyLogs = state.attendance.filter(log => {
-    const logDate = new Date(log.date);
-    return (logDate.getMonth() + 1) === month && logDate.getFullYear() === year;
-  });
+  const monthlyLogs = state.attendance.filter(log => isLogInMonthYear(log.date, month, year));
   
   // Headers for CSV
   let csvContent = "data:text/csv;charset=utf-8,";
@@ -2347,10 +2507,18 @@ async function saveAttendanceToSupabase(payload, isUpdate = false, logId = null)
   // Export CSV
   document.getElementById("btnExportRecapCSV").addEventListener("click", exportRecapToCSV);
   
-  // Print Rekap Per Guru (Daftar Hadir Guru)
+  // Print Rekap Gaji (Laporan Rekapitulasi Honorarium)
   document.getElementById("btnPrintRecapTable").addEventListener("click", () => {
-    generatePrintRekapPerGuru();
+    generatePrintRekapGaji();
   });
+  
+  // Print Absensi Guru (Daftar Hadir Guru)
+  const btnAbsensi = document.getElementById("btnPrintAbsensiGuru");
+  if (btnAbsensi) {
+    btnAbsensi.addEventListener("click", () => {
+      generatePrintRekapPerGuru();
+    });
+  }
   
   // --- Slip Gaji Modal Handlers ---
   document.getElementById("btnCloseSlipModal").addEventListener("click", closeSlipModal);
