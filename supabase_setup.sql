@@ -16,8 +16,12 @@ CREATE TABLE IF NOT EXISTS public.teachers (
     rate NUMERIC(12, 2) NOT NULL DEFAULT 50000.00,
     transport NUMERIC(12, 2) NOT NULL DEFAULT 20000.00,
     status VARCHAR(20) NOT NULL DEFAULT 'aktif' CHECK (status IN ('aktif', 'nonaktif')),
+    password VARCHAR(100) NOT NULL DEFAULT 'guru123',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
+
+-- Migrasi untuk menambahkan kolom password pada tabel teachers jika belum ada
+ALTER TABLE public.teachers ADD COLUMN IF NOT EXISTS password VARCHAR(100) NOT NULL DEFAULT 'guru123';
 
 -- 3. Tabel Presensi & KBM
 CREATE TABLE IF NOT EXISTS public.attendance (

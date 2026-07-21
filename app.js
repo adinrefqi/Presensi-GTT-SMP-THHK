@@ -254,7 +254,8 @@ async function loadData() {
         subject: t.subject,
         rate: Number(t.rate),
         transport: Number(t.transport),
-        status: t.status
+        status: t.status,
+        password: t.password || "guru123"
       }));
     }
     
@@ -531,13 +532,13 @@ function initDateDisplay() {
 async function loadSampleData(showAlert = true) {
   // Demo Teachers (Updated as requested by the user)
   const sampleTeachers = [
-    { id: "199003122022031001", name: "Anom Kudho Winanto, S.Sn.", subject: "Seni Budaya", rate: 50000, transport: 20000, status: "aktif" },
-    { id: "199208152021022002", name: "Brigita Ajeng Dwiandari, S.Pd", subject: "Matematika", rate: 50000, transport: 20000, status: "aktif" },
-    { id: "199411202022032003", name: "Fransiska Virgiana M, S.Pd", subject: "Bahasa Indonesia", rate: 50000, transport: 20000, status: "aktif" },
-    { id: "198505102018031004", name: "Ismadi, S.Pd", subject: "Fisika", rate: 55000, transport: 25000, status: "aktif" },
-    { id: "198810052019052005", name: "WS. Inggried Budiarti, S.Pd", subject: "Informatika", rate: 50000, transport: 20000, status: "aktif" },
-    { id: "199606142023022006", name: "Yunita Mentari Putri, S. Sn", subject: "Seni Budaya", rate: 45000, transport: 20000, status: "aktif" },
-    { id: "198712252016031007", name: "Atmo Kusumo, S.Pd.", subject: "Penjasorkes", rate: 45000, transport: 20000, status: "aktif" }
+    { id: "199003122022031001", name: "Anom Kudho Winanto, S.Sn.", subject: "Seni Budaya", rate: 50000, transport: 20000, status: "aktif", password: "anom" },
+    { id: "199208152021022002", name: "Brigita Ajeng Dwiandari, S.Pd", subject: "Matematika", rate: 50000, transport: 20000, status: "aktif", password: "brigita" },
+    { id: "199411202022032003", name: "Fransiska Virgiana M, S.Pd", subject: "Bahasa Indonesia", rate: 50000, transport: 20000, status: "aktif", password: "fransiska" },
+    { id: "198505102018031004", name: "Ismadi, S.Pd", subject: "Fisika", rate: 55000, transport: 25000, status: "aktif", password: "ismadi" },
+    { id: "198810052019052005", name: "WS. Inggried Budiarti, S.Pd", subject: "Informatika", rate: 50000, transport: 20000, status: "aktif", password: "inggried" },
+    { id: "199606142023022006", name: "Yunita Mentari Putri, S. Sn", subject: "Seni Budaya", rate: 45000, transport: 20000, status: "aktif", password: "yunita" },
+    { id: "198712252016031007", name: "Atmo Kusumo, S.Pd.", subject: "Penjasorkes", rate: 45000, transport: 20000, status: "aktif", password: "atmo" }
   ];
   
   // Generate realistic attendance for the current month
@@ -623,7 +624,8 @@ async function loadSampleData(showAlert = true) {
           subject: t.subject,
           rate: t.rate,
           transport: t.transport,
-          status: t.status
+          status: t.status,
+          password: t.password || "guru123"
         }))
       );
       if (tErr) throw tErr;
@@ -666,10 +668,11 @@ function checkTeacherCredentials(usernameInput, passwordInput) {
   const username = usernameInput.trim().toLowerCase();
   const password = passwordInput.trim();
   
-  if (password !== "guru123") return null;
-  
   return state.teachers.find(teacher => {
     if (teacher.status !== "aktif") return false;
+    
+    const teacherPassword = teacher.password || "guru123";
+    if (teacherPassword !== password) return false;
     
     const parts = teacher.name.split(/\s+/);
     const firstWord = parts[0].replace(/[^a-zA-Z]/g, "").toLowerCase();
@@ -1284,11 +1287,13 @@ function openGuruModal(isEdit = false, id = null) {
       document.getElementById("guruRate").value = teacher.rate;
       document.getElementById("guruTransport").value = teacher.transport;
       document.getElementById("guruStatus").value = teacher.status;
+      document.getElementById("guruPassword").value = teacher.password || "guru123";
     }
   } else {
     modalTitle.textContent = "Tambah Data Guru GTT";
     document.getElementById("guruIndex").value = "";
     document.getElementById("guruNuptk").disabled = false;
+    document.getElementById("guruPassword").value = "guru123";
   }
   
   modal.classList.add("active");
@@ -2058,6 +2063,7 @@ function setupEventListeners() {
     const rateField = Number(document.getElementById("guruRate").value);
     const transportField = Number(document.getElementById("guruTransport").value);
     const statusField = document.getElementById("guruStatus").value;
+    const passwordField = document.getElementById("guruPassword").value.trim() || "guru123";
     const editingId = document.getElementById("guruIndex").value; // Empty if creating
     
     showLoadingOverlay(true);
@@ -2072,7 +2078,8 @@ function setupEventListeners() {
               subject: mapelField,
               rate: rateField,
               transport: transportField,
-              status: statusField
+              status: statusField,
+              password: passwordField
             })
             .eq("id", editingId);
             
@@ -2087,7 +2094,8 @@ function setupEventListeners() {
             subject: mapelField,
             rate: rateField,
             transport: transportField,
-            status: statusField
+            status: statusField,
+            password: passwordField
           };
         }
       } else {
@@ -2108,7 +2116,8 @@ function setupEventListeners() {
               subject: mapelField,
               rate: rateField,
               transport: transportField,
-              status: statusField
+              status: statusField,
+              password: passwordField
             });
             
           if (error) throw error;
@@ -2120,7 +2129,8 @@ function setupEventListeners() {
           subject: mapelField,
           rate: rateField,
           transport: transportField,
-          status: statusField
+          status: statusField,
+          password: passwordField
         });
       }
       
