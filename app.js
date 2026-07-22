@@ -1454,7 +1454,7 @@ function renderPresensiForm() {
   
   if (isGuru) {
     const teacherId = state.currentUser.id;
-    const teacher = state.teachers.find(t => t.id === teacherId) || { name: state.currentUser.name, subject: "-" };
+    const teacher = state.teachers.find(t => String(t.id) === String(teacherId)) || { id: teacherId, name: state.currentUser.name, subject: "-" };
     
     const opt = document.createElement("option");
     opt.value = teacher.id;
@@ -2489,6 +2489,7 @@ function setupEventListeners() {
     document.getElementById("presensiTanggal").value = new Date().toISOString().split('T')[0];
     togglePresensiFormFields("Hadir");
     if (signaturePadInstance) signaturePadInstance.clear();
+    renderPresensiForm();
   });
   
 async function saveAttendanceToSupabase(payload, isUpdate = false, logId = null) {
