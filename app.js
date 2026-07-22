@@ -1360,6 +1360,15 @@ function openGuruModal(isEdit = false, id = null) {
     document.getElementById("guruPassword").value = "guru123";
   }
   
+  // Reset password visibility mode to hidden (password)
+  const guruPassInput = document.getElementById("guruPassword");
+  const guruPassToggleBtn = document.getElementById("toggleGuruPassword");
+  if (guruPassInput) guruPassInput.type = "password";
+  if (guruPassToggleBtn) {
+    guruPassToggleBtn.innerHTML = '<i data-lucide="eye"></i>';
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+  }
+
   modal.classList.add("active");
 }
 
@@ -2667,4 +2676,22 @@ async function saveAttendanceToSupabase(payload, isUpdate = false, logId = null)
   });
   
   document.getElementById("btnLogoutBtn").addEventListener("click", logout);
+  
+  // --- Password Toggle Handlers ---
+  document.querySelectorAll(".btn-toggle-password").forEach(btn => {
+    btn.addEventListener("click", function() {
+      const container = this.closest(".password-input-container");
+      if (!container) return;
+      const input = container.querySelector("input");
+      if (!input) return;
+      
+      const isPassword = input.type === "password";
+      input.type = isPassword ? "text" : "password";
+      
+      this.innerHTML = isPassword ? '<i data-lucide="eye-off"></i>' : '<i data-lucide="eye"></i>';
+      if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+      }
+    });
+  });
 }

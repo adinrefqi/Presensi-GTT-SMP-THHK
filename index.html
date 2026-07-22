@@ -78,7 +78,12 @@
         </div>
         <div class="form-group">
           <label for="loginPassword">Kata Sandi</label>
-          <input type="password" class="input-control" id="loginPassword" placeholder="••••••••" required autocomplete="current-password">
+          <div class="password-input-container">
+            <input type="password" class="input-control" id="loginPassword" placeholder="••••••••" required autocomplete="current-password">
+            <button type="button" class="btn-toggle-password" id="toggleLoginPassword" title="Tampilkan/Sembunyikan Kata Sandi" aria-label="Tampilkan atau sembunyikan kata sandi">
+              <i data-lucide="eye"></i>
+            </button>
+          </div>
         </div>
         <div id="loginErrorMessage" class="login-error-msg" style="display: none; color: var(--danger); font-size: 0.85rem; font-weight: 600; margin-top: 4px;">
           Username atau password salah!
@@ -634,7 +639,12 @@
 
           <div class="form-group">
             <label for="guruPassword">Kata Sandi Akun (Password)</label>
-            <input type="password" class="input-control" id="guruPassword" placeholder="••••••••" required autocomplete="new-password">
+            <div class="password-input-container">
+              <input type="password" class="input-control" id="guruPassword" placeholder="••••••••" required autocomplete="new-password">
+              <button type="button" class="btn-toggle-password" id="toggleGuruPassword" title="Tampilkan/Sembunyikan Kata Sandi" aria-label="Tampilkan atau sembunyikan kata sandi">
+                <i data-lucide="eye"></i>
+              </button>
+            </div>
             <small style="color: var(--text-secondary); font-size: 0.78rem; display: block; margin-top: 4px;">Kata sandi yang digunakan guru untuk masuk/login ke aplikasi.</small>
           </div>
 

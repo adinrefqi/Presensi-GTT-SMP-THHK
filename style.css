@@ -277,6 +277,44 @@ textarea { min-height: 82px; resize: vertical; }
 .input-control:focus, select:focus, textarea:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(8,127,115,.11); }
 [data-theme="dark"] .input-control:hover, [data-theme="dark"] select:hover, [data-theme="dark"] textarea:hover { border-color: #40504f; }
 
+/* Password Input Toggle Styling */
+.password-input-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+.password-input-container .input-control {
+  padding-right: 42px;
+}
+.btn-toggle-password {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  color: var(--text-muted);
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: color var(--transition-fast), background-color var(--transition-fast);
+}
+.btn-toggle-password:hover {
+  color: var(--text-primary);
+  background: var(--bg-subtle);
+}
+.btn-toggle-password svg {
+  width: 17px;
+  height: 17px;
+  pointer-events: none;
+}
+
 /* Buttons */
 .btn {
   display: inline-flex;
