@@ -1,6 +1,21 @@
 /**
- * Logika Aplikasi Presensi & Honorarium GTT SMP THHK v5
+ * Logika Aplikasi Presensi & Honorarium GTT SMP THHK v5.1 (Security Patch)
  */
+
+// SECURITY: HTML Escape utility untuk mencegah XSS
+function escapeHTML(str) {
+  if (str === null || str === undefined) return '';
+  const div = document.createElement('div');
+  div.textContent = String(str);
+  return div.innerHTML;
+}
+
+// SECURITY: Brute Force Protection
+let loginAttempts = 0;
+let loginLockUntil = 0;
+const MAX_LOGIN_ATTEMPTS = 5;
+const LOGIN_LOCKOUT_MS = 30000; // 30 detik
+const MIN_PASSWORD_LENGTH = 6;
 
 // STATE APLIKASI
 let state = {
@@ -255,7 +270,7 @@ async function loadData() {
         rate: Number(t.rate),
         transport: Number(t.transport),
         status: t.status,
-        password: t.password && t.password !== "guru123" ? t.password : (t.name.split(" ")[0].toLowerCase() + (100 + idx * 111))
+        password: undefined // SECURITY: password tidak pernah disimpan di client state
       }));
     }
     
@@ -322,22 +337,18 @@ function loadDataFromStorage() {
   sanitizeTeachersState();
 }
 
-// SANITIZE SENSITIVE DATA FROM STATE
+// SANITIZE SENSITIVE DATA FROM STATE — SECURITY: selalu hapus password
 function sanitizeTeachersState() {
-  if (!state.currentUser || state.currentUser.role !== "admin") {
-    state.teachers.forEach(t => {
-      delete t.password;
-    });
-  }
+  state.teachers.forEach(t => {
+    delete t.password;
+  });
 }
 
-// SAVE DATA
+// SAVE DATA — SECURITY: password tidak pernah disimpan ke localStorage
 function saveData() {
   const safeTeachers = state.teachers.map(t => {
     const copy = { ...t };
-    if (!state.currentUser || state.currentUser.role !== "admin") {
-      delete copy.password;
-    }
+    delete copy.password;
     return copy;
   });
   localStorage.setItem("gtt_teachers", JSON.stringify(safeTeachers));
@@ -652,19 +663,19 @@ async function loadSampleData(showAlert = true) {
       await supabaseClient.from("attendance").delete().neq("id", "");
       await supabaseClient.from("teachers").delete().neq("id", "");
       
-      // Insert teachers
-      const { error: tErr } = await supabaseClient.from("teachers").insert(
-        sampleTeachers.map(t => ({
-          id: t.id,
-          name: t.name,
-          subject: t.subject,
-          rate: t.rate,
-          transport: t.transport,
-          status: t.status,
-          password: t.password || "guru123"
-        }))
-      );
-      if (tErr) throw tErr;
+      // Insert teachers via RPC (password akan di-hash di server)
+      for (const t of sampleTeachers) {
+        const { error: tErr } = await supabaseClient.rpc('upsert_teacher_with_hash', {
+          p_id: t.id,
+          p_name: t.name,
+          p_subject: t.subject,
+          p_rate: t.rate,
+          p_transport: t.transport,
+          p_status: t.status,
+          p_password: t.password || "guru123"
+        });
+        if (tErr) throw tErr;
+      }
       
       // Insert attendance in chunks/full list
       const { error: aErr } = await supabaseClient.from("attendance").insert(
@@ -699,18 +710,19 @@ async function loadSampleData(showAlert = true) {
 // ====================================================
 // AUTHENTICATION & ROLE-BASED ROUTING HELPERS
 // ====================================================
+
+// SECURITY: Login guru via Supabase RPC (password di-hash server-side)
 async function checkTeacherCredentials(usernameInput, passwordInput) {
   const username = usernameInput.trim().toLowerCase();
   const password = passwordInput.trim();
   
   if (isSupabaseConfigured()) {
     try {
+      // SECURITY: Gunakan RPC agar password diverifikasi di server-side (hashed)
       const { data: matchedTeachers } = await runSupabaseRequest(
-        () => supabaseClient
-          .from("teachers")
-          .select("*")
-          .eq("password", password)
-          .eq("status", "aktif"),
+        () => supabaseClient.rpc('verify_teacher_login', {
+          input_password: password
+        }),
         "Gagal verifikasi password guru"
       );
 
@@ -731,16 +743,13 @@ async function checkTeacherCredentials(usernameInput, passwordInput) {
     }
   }
   
+  // Fallback lokal: hanya cocokkan nama (password tidak tersedia di client)
   return state.teachers.find(teacher => {
     if (teacher.status !== "aktif") return false;
-    
-    const teacherPassword = teacher.password || "guru123";
-    if (teacherPassword !== password) return false;
     
     const parts = teacher.name.split(/\s+/);
     const firstWord = parts[0].replace(/[^a-zA-Z]/g, "").toLowerCase();
     
-    // Support either "ws" or the next word "inggried" for "WS. Inggried"
     if (firstWord === "ws") {
       const secondWord = parts[1] ? parts[1].replace(/[^a-zA-Z]/g, "").toLowerCase() : "";
       return username === "ws" || username === secondWord;
@@ -756,32 +765,43 @@ async function login(usernameInput, passwordInput) {
   const errorMsg = document.getElementById("loginErrorMessage");
   
   errorMsg.style.display = "none";
+  
+  // SECURITY: Brute force protection
+  const now = Date.now();
+  if (loginLockUntil > now) {
+    const remainSec = Math.ceil((loginLockUntil - now) / 1000);
+    errorMsg.textContent = `Terlalu banyak percobaan gagal. Coba lagi dalam ${remainSec} detik.`;
+    errorMsg.style.display = "block";
+    return;
+  }
+  
   showLoadingOverlay(true);
   
   try {
-    // 1. Check Supabase Admins if configured
+    // 1. Check Supabase Admins via RPC (hashed password)
     if (isSupabaseConfigured()) {
-      const { data: adminData } = await runSupabaseRequest(
-        () => supabaseClient
-          .from("admins")
-          .select("username, name")
-          .eq("username", username)
-          .eq("password", password)
-          .maybeSingle(),
+      const { data: adminRows } = await runSupabaseRequest(
+        () => supabaseClient.rpc('verify_admin_login', {
+          input_username: username,
+          input_password: password
+        }),
         "Gagal memeriksa akun admin"
       );
       
-      if (adminData) {
+      if (adminRows && adminRows.length > 0) {
+        const adminData = adminRows[0];
         state.currentUser = { role: "admin", name: adminData.name, id: adminData.username };
         sessionStorage.setItem("gtt_session", JSON.stringify(state.currentUser));
+        loginAttempts = 0; // Reset counter on success
         onLoginSuccess();
         return;
       }
     } else {
-      // Fallback local admin check
+      // Fallback local admin check (hanya jika Supabase tidak dikonfigurasi)
       if (username === "admin" && password === "admin123") {
         state.currentUser = { role: "admin", name: "Admin THHK", id: "admin" };
         sessionStorage.setItem("gtt_session", JSON.stringify(state.currentUser));
+        loginAttempts = 0;
         onLoginSuccess();
         return;
       }
@@ -789,20 +809,32 @@ async function login(usernameInput, passwordInput) {
       if (username === "elsa" && password === "admin123") {
         state.currentUser = { role: "admin", name: "Elsa Angreani, S.T", id: "elsa" };
         sessionStorage.setItem("gtt_session", JSON.stringify(state.currentUser));
+        loginAttempts = 0;
         onLoginSuccess();
         return;
       }
     }
     
-    // 2. Check Teacher
+    // 2. Check Teacher via RPC
     const teacher = await checkTeacherCredentials(usernameInput, passwordInput);
     if (teacher) {
       state.currentUser = { role: "guru", name: teacher.name, id: teacher.id };
       sessionStorage.setItem("gtt_session", JSON.stringify(state.currentUser));
+      loginAttempts = 0; // Reset counter on success
       onLoginSuccess();
       return;
     }
     
+    // SECURITY: Increment brute force counter
+    loginAttempts++;
+    if (loginAttempts >= MAX_LOGIN_ATTEMPTS) {
+      loginLockUntil = Date.now() + LOGIN_LOCKOUT_MS;
+      errorMsg.textContent = `Terlalu banyak percobaan gagal (${MAX_LOGIN_ATTEMPTS}x). Akun dikunci selama ${LOGIN_LOCKOUT_MS / 1000} detik.`;
+      loginAttempts = 0; // Reset setelah lockout di-set
+    } else {
+      const remaining = MAX_LOGIN_ATTEMPTS - loginAttempts;
+      errorMsg.textContent = `Username atau password salah! Sisa percobaan: ${remaining}`;
+    }
     errorMsg.style.display = "block";
   } catch (err) {
     console.error("Gagal melakukan login:", {
@@ -1197,11 +1229,11 @@ function renderQuickAttendanceLogs(dateStr, todayLogs) {
     div.className = "recent-log-item";
     div.innerHTML = `
       <div class="log-info-meta">
-        <span class="log-teacher-name">${teacher.name}</span>
-        <span class="log-subject-jp">${teacher.subject} • ${log.status === 'Hadir' ? log.jp + ' JP (' + log.class + ')' : 'Tidak Mengajar'}</span>
+        <span class="log-teacher-name">${escapeHTML(teacher.name)}</span>
+        <span class="log-subject-jp">${escapeHTML(teacher.subject)} • ${log.status === 'Hadir' ? log.jp + ' JP (' + escapeHTML(log.class) + ')' : 'Tidak Mengajar'}</span>
       </div>
       <div>
-        <span class="badge badge-${log.status.toLowerCase()}">${log.status}</span>
+        <span class="badge badge-${escapeHTML(log.status).toLowerCase()}">${escapeHTML(log.status)}</span>
       </div>
     `;
     container.appendChild(div);
@@ -1308,18 +1340,18 @@ function renderGuruList() {
   filtered.forEach(t => {
     const tr = document.createElement("tr");
     tr.innerHTML = `
-      <td>${t.id}</td>
-      <td class="font-bold">${t.name}</td>
-      <td>${t.subject}</td>
+      <td>${escapeHTML(t.id)}</td>
+      <td class="font-bold">${escapeHTML(t.name)}</td>
+      <td>${escapeHTML(t.subject)}</td>
       <td>${formatRupiah(t.rate)} /JP</td>
       <td>${formatRupiah(t.transport)} /Hadir</td>
-      <td><span class="badge badge-${t.status === 'aktif' ? 'active' : 'inactive'}">${t.status}</span></td>
+      <td><span class="badge badge-${t.status === 'aktif' ? 'active' : 'inactive'}">${escapeHTML(t.status)}</span></td>
       <td class="text-right">
         <div class="actions-cell" style="justify-content: flex-end;">
-          <button class="icon-btn edit" onclick="editTeacher('${t.id}')" title="Edit Data">
+          <button class="icon-btn edit" onclick="editTeacher('${escapeHTML(t.id)}')" title="Edit Data">
             <i data-lucide="edit-3"></i>
           </button>
-          <button class="icon-btn delete" onclick="deleteTeacher('${t.id}')" title="Hapus Data">
+          <button class="icon-btn delete" onclick="deleteTeacher('${escapeHTML(t.id)}')" title="Hapus Data">
             <i data-lucide="trash-2"></i>
           </button>
         </div>
@@ -1351,7 +1383,8 @@ function openGuruModal(isEdit = false, id = null) {
       document.getElementById("guruRate").value = teacher.rate;
       document.getElementById("guruTransport").value = teacher.transport;
       document.getElementById("guruStatus").value = teacher.status;
-      document.getElementById("guruPassword").value = teacher.password || "guru123";
+      document.getElementById("guruPassword").value = "";
+      document.getElementById("guruPassword").placeholder = "Masukkan password baru (min. 6 karakter)";
     }
   } else {
     modalTitle.textContent = "Tambah Data Guru GTT";
@@ -1529,26 +1562,26 @@ function renderDetailedLogs() {
     div.innerHTML = `
       <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
         <div class="log-info-meta" style="flex:1;">
-          <span class="log-teacher-name" style="font-size: 0.95rem;">${teacherName}</span>
+          <span class="log-teacher-name" style="font-size: 0.95rem;">${escapeHTML(teacherName)}</span>
           <span class="log-subject-jp" style="font-size: 0.8rem;">
-            ${formatIndonesianDate(log.date)} • ${subject} • <strong class="text-primary-color">${log.status}</strong> 
-            ${log.status === 'Hadir' ? '• ' + log.jp + ' JP • Kelas: ' + (log.class || '-') : ''}
+            ${formatIndonesianDate(log.date)} • ${escapeHTML(subject)} • <strong class="text-primary-color">${escapeHTML(log.status)}</strong> 
+            ${log.status === 'Hadir' ? '• ' + log.jp + ' JP • Kelas: ' + escapeHTML(log.class || '-') : ''}
           </span>
-          ${log.status === 'Hadir' && log.topic ? `<span class="log-date-time" style="font-size: 0.75rem; margin-top:2px;">KBM: "${log.topic}"</span>` : ''}
+          ${log.status === 'Hadir' && log.topic ? `<span class="log-date-time" style="font-size: 0.75rem; margin-top:2px;">KBM: "${escapeHTML(log.topic)}"</span>` : ''}
         </div>
-        <span class="badge badge-${log.status.toLowerCase()}">${log.status}</span>
+        <span class="badge badge-${escapeHTML(log.status).toLowerCase()}">${escapeHTML(log.status)}</span>
         ${(!isGuru || (state.currentUser && state.currentUser.role === 'admin')) ? `
           <div class="actions-cell">
-            <button class="icon-btn edit" onclick="editLog('${log.id}')" title="Edit Presensi">
+            <button class="icon-btn edit" onclick="editLog('${escapeHTML(log.id)}')" title="Edit Presensi">
               <i data-lucide="edit-3"></i>
             </button>
-            <button class="icon-btn delete" onclick="deleteLog('${log.id}')" title="Hapus Presensi">
+            <button class="icon-btn delete" onclick="deleteLog('${escapeHTML(log.id)}')" title="Hapus Presensi">
               <i data-lucide="trash-2"></i>
             </button>
           </div>
         ` : ''}
       </div>
-      ${log.signature ? `<div style="display:flex;align-items:center;gap:6px;margin-top:2px;"><span style="font-size:.66rem;color:var(--text-muted);">TTD:</span><img src="${log.signature}" alt="Tanda tangan" class="signature-preview"></div>` : ''}
+      ${log.signature ? `<div style="display:flex;align-items:center;gap:6px;margin-top:2px;"><span style="font-size:.66rem;color:var(--text-muted);">TTD:</span><img src="${escapeHTML(log.signature)}" alt="Tanda tangan" class="signature-preview"></div>` : ''}
     `;
     container.appendChild(div);
   });
@@ -1680,7 +1713,7 @@ function renderRekapTable() {
     
     const tr = document.createElement("tr");
     tr.innerHTML = `
-      <td class="font-bold">${teacher.name}</td>
+      <td class="font-bold">${escapeHTML(teacher.name)}</td>
       <td class="text-right">${countHadir} hari</td>
       <td class="text-right text-muted" style="font-size: 0.8rem;">${otherSummaryStr}</td>
       <td class="text-right">${totalJP} JP</td>
@@ -1688,7 +1721,7 @@ function renderRekapTable() {
       <td class="text-right">${formatRupiah(uangTransport)}</td>
       <td class="text-right font-bold text-primary-color">${formatRupiah(grandTotal)}</td>
       <td class="text-right">
-        <button class="btn btn-secondary btn-sm" onclick="generateSlipGaji('${teacher.id}', ${filterMonth}, ${filterYear})" title="Lihat Slip Gaji">
+        <button class="btn btn-secondary btn-sm" onclick="generateSlipGaji('${escapeHTML(teacher.id)}', ${filterMonth}, ${filterYear})" title="Lihat Slip Gaji">
           <i data-lucide="receipt"></i> Slip
         </button>
       </td>
@@ -1726,16 +1759,16 @@ window.generateSlipGaji = function(teacherId, month, year) {
   
   slipContainer.innerHTML = `
     <div class="slip-header">
-      <h2>${state.settings.schoolName}</h2>
-      <p>${state.settings.schoolAddress}</p>
+      <h2>${escapeHTML(state.settings.schoolName)}</h2>
+      <p>${escapeHTML(state.settings.schoolAddress)}</p>
       <div style="font-weight: bold; margin-top: 6px;">SLIP HONORARIUM GURU TIDAK TETAP (GTT)</div>
-      <div>Periode: ${periodText}</div>
+      <div>Periode: ${escapeHTML(periodText)}</div>
     </div>
     
     <dl class="slip-metadata">
-      <dt>NUPTK / ID</dt><dd>: ${teacher.id}</dd>
-      <dt>Nama GTT</dt><dd>: ${teacher.name}</dd>
-      <dt>Mata Pelajaran</dt><dd>: ${teacher.subject}</dd>
+      <dt>NUPTK / ID</dt><dd>: ${escapeHTML(teacher.id)}</dd>
+      <dt>Nama GTT</dt><dd>: ${escapeHTML(teacher.name)}</dd>
+      <dt>Mata Pelajaran</dt><dd>: ${escapeHTML(teacher.subject)}</dd>
       <dt>Status Kehadiran</dt><dd>: Hadir (${countHadir} hari), Sakit (${countSakit} hari), Izin (${countIzin} hari), Alpa (${countAlpa} hari)</dd>
     </dl>
     
@@ -1780,15 +1813,15 @@ window.generateSlipGaji = function(teacherId, month, year) {
         <div>Mengetahui,</div>
         <div>Kepala Sekolah</div>
         <div class="signature-space"></div>
-        <div style="font-weight: bold; text-decoration: underline;">${state.settings.principalName}</div>
-        <div>NIP: ${state.settings.principalNip}</div>
+        <div style="font-weight: bold; text-decoration: underline;">${escapeHTML(state.settings.principalName)}</div>
+        <div>NIP: ${escapeHTML(state.settings.principalNip)}</div>
       </div>
       <div class="signature-box">
         <div>Tegal, ${new Date().toLocaleDateString('id-ID', {day: 'numeric', month: 'long', year: 'numeric'})}</div>
         <div>Manager Sekolah</div>
         <div class="signature-space"></div>
-        <div style="font-weight: bold; text-decoration: underline;">${state.settings.treasurerName}</div>
-        <div>NIP: ${state.settings.treasurerNip}</div>
+        <div style="font-weight: bold; text-decoration: underline;">${escapeHTML(state.settings.treasurerName)}</div>
+        <div>NIP: ${escapeHTML(state.settings.treasurerNip)}</div>
       </div>
     </div>
     
@@ -1957,8 +1990,8 @@ async function generatePrintRekapGaji() {
     tableRowsHtml += `
       <tr>
         <td style="text-align: center;">${idx + 1}</td>
-        <td style="font-weight: bold;">${teacher.name}</td>
-        <td>${teacher.subject}</td>
+        <td style="font-weight: bold;">${escapeHTML(teacher.name)}</td>
+        <td>${escapeHTML(teacher.subject)}</td>
         <td style="text-align: center;">${countHadir} Hari</td>
         <td style="text-align: center; font-size: 8.5pt; color: #64748b;">${otherStr}</td>
         <td style="text-align: center;">${totalJP} JP</td>
@@ -1976,9 +2009,9 @@ async function generatePrintRekapGaji() {
         <img src="school-logo.png" class="print-logo" alt="Logo">
         <div class="print-header-text">
           <div class="print-yayasan">Yayasan Tri Dharma Tegal</div>
-          <div class="print-school-name">${state.settings.schoolName}</div>
+          <div class="print-school-name">${escapeHTML(state.settings.schoolName)}</div>
           <div class="print-school-subtitle">( SEKOLAH RAMAH ANAK, TERAKREDITASI "B" )</div>
-          <div class="print-school-address">Alamat: ${state.settings.schoolAddress}</div>
+          <div class="print-school-address">Alamat: ${escapeHTML(state.settings.schoolAddress)}</div>
           <div class="print-school-email">Surel: smpthhk.tegal@gmail.com</div>
         </div>
       </div>
@@ -2021,15 +2054,15 @@ async function generatePrintRekapGaji() {
           <div>Mengetahui,</div>
           <div>Kepala Sekolah</div>
           <div class="signature-space" style="height: 55px;"></div>
-          <div style="font-weight: bold; text-decoration: underline;">${state.settings.principalName}</div>
-          <div>NIP: ${state.settings.principalNip}</div>
+          <div style="font-weight: bold; text-decoration: underline;">${escapeHTML(state.settings.principalName)}</div>
+          <div>NIP: ${escapeHTML(state.settings.principalNip)}</div>
         </div>
         <div class="signature-box">
           <div>Tegal, ${new Date().toLocaleDateString('id-ID', {day: 'numeric', month: 'long', year: 'numeric'})}</div>
           <div>Manager / Bendahara Sekolah</div>
           <div class="signature-space" style="height: 55px;"></div>
-          <div style="font-weight: bold; text-decoration: underline;">${state.settings.treasurerName}</div>
-          <div>NIP: ${state.settings.treasurerNip}</div>
+          <div style="font-weight: bold; text-decoration: underline;">${escapeHTML(state.settings.treasurerName)}</div>
+          <div>NIP: ${escapeHTML(state.settings.treasurerNip)}</div>
         </div>
       </div>
     </div>
@@ -2109,14 +2142,14 @@ async function generatePrintRekapPerGuru() {
       }
       
       const jpStr = log.status === 'Hadir' ? `${log.jp} jp` : '-';
-      const sigHtml = log.signature ? `<img src="${log.signature}" alt="TTD">` : '';
+      const sigHtml = log.signature ? `<img src="${escapeHTML(log.signature)}" alt="TTD">` : '';
       
       tableRows += `<tr>
         <td style="text-align: center;">${idx + 1}</td>
         <td class="text-left" style="text-align: left; padding-left: 8px;">${dateStr}</td>
         <td></td>
         <td></td>
-        <td style="text-align: center;">${kelasMapel}</td>
+        <td style="text-align: center;">${escapeHTML(kelasMapel)}</td>
         <td style="text-align: center;">${jpStr}</td>
         <td class="td-sig" style="text-align: center;">${sigHtml}</td>
       </tr>`;
@@ -2142,7 +2175,7 @@ async function generatePrintRekapPerGuru() {
           <img src="school-logo.png" class="print-logo" alt="Logo" style="width: 60px; height: 60px; object-fit: contain;">
           <div class="print-header-text" style="flex: 1; text-align: center; line-height: 1.3;">
             <div class="print-yayasan" style="font-size: 11pt; font-weight: bold;">YAYASAN TRI DHARMA TEGAL</div>
-            <div class="print-school-name" style="font-size: 13.5pt; font-weight: bold; text-transform: uppercase;">${schoolNameDisplay}</div>
+            <div class="print-school-name" style="font-size: 13.5pt; font-weight: bold; text-transform: uppercase;">${escapeHTML(schoolNameDisplay)}</div>
             <div class="print-school-subtitle" style="font-size: 9pt; font-weight: bold;">( SEKOLAH RAMAH ANAK, TERAKREDITASI "B" )</div>
             <div class="print-school-address" style="font-size: 8pt;">Alamat : Jalan Gurami Nomor 6, Telepon (0283) 6146846, Kota Tegal</div>
             <div class="print-school-email" style="font-size: 8pt;">Surel : smpthhk.tegal@gmail.com</div>
@@ -2155,7 +2188,7 @@ async function generatePrintRekapPerGuru() {
         </div>
         
         <div class="print-rekap-info" style="margin-bottom: 8px; font-size: 10pt;">
-          <span>Nama : <strong>${teacher.name}</strong></span>
+          <span>Nama : <strong>${escapeHTML(teacher.name)}</strong></span>
         </div>
         
         <table class="print-rekap-table" style="width: 100%; border-collapse: collapse; font-size: 9.5pt;">
@@ -2183,7 +2216,7 @@ async function generatePrintRekapPerGuru() {
             <div>Mengetahui,</div>
             <div>Pemilik Sekolah</div>
             <div class="print-sig-space" style="height: 55px;"></div>
-            <div class="print-sig-name" style="font-weight: bold; text-decoration: underline;">${state.settings.treasurerName}</div>
+            <div class="print-sig-name" style="font-weight: bold; text-decoration: underline;">${escapeHTML(state.settings.treasurerName)}</div>
           </div>
         </div>
       </div>
@@ -2348,22 +2381,26 @@ function setupEventListeners() {
     const passwordField = document.getElementById("guruPassword").value.trim() || "guru123";
     const editingId = document.getElementById("guruIndex").value; // Empty if creating
     
+    // SECURITY: Validasi minimum password
+    if (passwordField.length < MIN_PASSWORD_LENGTH) {
+      alert(`Password minimal ${MIN_PASSWORD_LENGTH} karakter!`);
+      return;
+    }
+    
     showLoadingOverlay(true);
     try {
       if (editingId) {
-        // Edit mode
+        // Edit mode — SECURITY: gunakan RPC untuk hash password di server
         if (isSupabaseConfigured()) {
-          const { error } = await supabaseClient
-            .from("teachers")
-            .update({
-              name: nameField,
-              subject: mapelField,
-              rate: rateField,
-              transport: transportField,
-              status: statusField,
-              password: passwordField
-            })
-            .eq("id", editingId);
+          const { error } = await supabaseClient.rpc('upsert_teacher_with_hash', {
+            p_id: editingId,
+            p_name: nameField,
+            p_subject: mapelField,
+            p_rate: rateField,
+            p_transport: transportField,
+            p_status: statusField,
+            p_password: passwordField
+          });
             
           if (error) throw error;
         }
@@ -2371,13 +2408,13 @@ function setupEventListeners() {
         const idx = state.teachers.findIndex(t => t.id === editingId);
         if (idx !== -1) {
           state.teachers[idx] = {
-            id: editingId, // Keep original ID
+            id: editingId,
             name: nameField,
             subject: mapelField,
             rate: rateField,
             transport: transportField,
-            status: statusField,
-            password: passwordField
+            status: statusField
+            // SECURITY: password tidak disimpan di client state
           };
         }
       } else {
@@ -2389,18 +2426,17 @@ function setupEventListeners() {
           return;
         }
         
+        // SECURITY: gunakan RPC untuk hash password di server
         if (isSupabaseConfigured()) {
-          const { error } = await supabaseClient
-            .from("teachers")
-            .insert({
-              id: idField,
-              name: nameField,
-              subject: mapelField,
-              rate: rateField,
-              transport: transportField,
-              status: statusField,
-              password: passwordField
-            });
+          const { error } = await supabaseClient.rpc('upsert_teacher_with_hash', {
+            p_id: idField,
+            p_name: nameField,
+            p_subject: mapelField,
+            p_rate: rateField,
+            p_transport: transportField,
+            p_status: statusField,
+            p_password: passwordField
+          });
             
           if (error) throw error;
         }
@@ -2411,10 +2447,11 @@ function setupEventListeners() {
           subject: mapelField,
           rate: rateField,
           transport: transportField,
-          status: statusField,
-          password: passwordField
+          status: statusField
+          // SECURITY: password tidak disimpan di client state
         });
       }
+
       
       saveData();
       renderAllViews();

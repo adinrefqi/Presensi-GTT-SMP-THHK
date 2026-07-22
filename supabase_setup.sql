@@ -96,3 +96,14 @@ ON CONFLICT (id) DO UPDATE SET password = EXCLUDED.password;
 INSERT INTO public.settings (id, school_name, school_address, principal_name, principal_nip, treasurer_name, treasurer_nip)
 VALUES (1, 'SMP THHK Tegal', 'Jl. Dr. Sutomo No.50, Kota Tegal', 'Haryanto, S.Pd., M.M.', '19740512 199903 1 002', 'Siti Rahmawati, A.Md.', '-')
 ON CONFLICT (id) DO NOTHING;
+
+
+-- ==========================================
+-- PENTING: JALANKAN MIGRATION KEAMANAN
+-- ==========================================
+-- Setelah menjalankan file ini, jalankan juga:
+--   supabase_migration_security.sql
+-- untuk mengaktifkan:
+--   1. Password hashing (pgcrypto)
+--   2. Row Level Security (RLS) 
+--   3. Fungsi login server-side (RPC)

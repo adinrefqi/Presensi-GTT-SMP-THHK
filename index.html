@@ -3,6 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- SECURITY: Content Security Policy -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://unpkg.com 'unsafe-inline'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src https://fonts.gstatic.com; connect-src https://*.supabase.co; img-src 'self' data: blob:;">
   <title>Presensi GTT SMP THHK</title>
   <!-- SEO & Favicon placeholder -->
   <meta name="description" content="Aplikasi Presensi dan Rekapitulasi Honorarium Guru Tidak Tetap (GTT) SMP THHK">
@@ -32,14 +34,14 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   
-  <!-- Chart.js CDN for Visualizations -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Chart.js CDN for Visualizations (pinned version) -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js" crossorigin="anonymous"></script>
   
-  <!-- Lucide Icons CDN -->
-  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Lucide Icons CDN (pinned version) -->
+  <script src="https://unpkg.com/lucide@0.468.0" crossorigin="anonymous"></script>
   
-  <!-- Supabase JS Client CDN -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <!-- Supabase JS Client CDN (pinned version) -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4" crossorigin="anonymous"></script>
   
   <!-- PWA & Mobile Web App Meta Tags -->
   <link rel="manifest" href="manifest.json">
