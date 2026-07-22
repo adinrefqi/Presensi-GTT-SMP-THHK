@@ -52,6 +52,10 @@ CREATE TABLE IF NOT EXISTS public.settings (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
+-- Migrasi untuk menambahkan kolom id jika tabel settings sudah ada sebelumnya tanpa kolom id
+ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS id INT DEFAULT 1;
+UPDATE public.settings SET id = 1 WHERE id IS NULL;
+
 -- Trigger untuk memperbarui kolom updated_at pada tabel settings
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
