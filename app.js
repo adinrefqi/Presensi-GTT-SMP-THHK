@@ -1569,8 +1569,8 @@ function renderDetailedLogs() {
           </span>
           ${log.status === 'Hadir' && log.topic ? `<span class="log-date-time" style="font-size: 0.75rem; margin-top:2px;">KBM: "${escapeHTML(log.topic)}"</span>` : ''}
         </div>
-        <span class="badge badge-${escapeHTML(log.status).toLowerCase()}">${escapeHTML(log.status)}</span>
-        ${(!isGuru || (state.currentUser && state.currentUser.role === 'admin')) ? `
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span class="badge badge-${escapeHTML(log.status).toLowerCase()}">${escapeHTML(log.status)}</span>
           <div class="actions-cell">
             <button class="icon-btn edit" onclick="editLog('${escapeHTML(log.id)}')" title="Edit Presensi">
               <i data-lucide="edit-3"></i>
@@ -1579,7 +1579,7 @@ function renderDetailedLogs() {
               <i data-lucide="trash-2"></i>
             </button>
           </div>
-        ` : ''}
+        </div>
       </div>
       ${log.signature ? `<div style="display:flex;align-items:center;gap:6px;margin-top:2px;"><span style="font-size:.66rem;color:var(--text-muted);">TTD:</span><img src="${escapeHTML(log.signature)}" alt="Tanda tangan" class="signature-preview"></div>` : ''}
     `;
