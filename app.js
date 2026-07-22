@@ -248,14 +248,14 @@ async function loadData() {
     }
     
     if (teachersData) {
-      state.teachers = teachersData.map(t => ({
+      state.teachers = teachersData.map((t, idx) => ({
         id: t.id,
         name: t.name,
         subject: t.subject,
         rate: Number(t.rate),
         transport: Number(t.transport),
         status: t.status,
-        password: t.password || "guru123"
+        password: t.password && t.password !== "guru123" ? t.password : (t.name.split(" ")[0].toLowerCase() + (100 + idx * 111))
       }));
     }
     
@@ -566,15 +566,15 @@ function initDateDisplay() {
 // SAMPLE DATA GENERATOR
 // SAMPLE DATA GENERATOR
 async function loadSampleData(showAlert = true) {
-  // Demo Teachers (Updated as requested by the user)
+  // Demo Teachers (Unique passwords assigned to each teacher)
   const sampleTeachers = [
-    { id: "199003122022031001", name: "Anom Kudho Winanto, S.Sn.", subject: "Seni Budaya", rate: 50000, transport: 20000, status: "aktif", password: "anom" },
-    { id: "199208152021022002", name: "Brigita Ajeng Dwiandari, S.Pd", subject: "Matematika", rate: 50000, transport: 20000, status: "aktif", password: "brigita" },
-    { id: "199411202022032003", name: "Fransiska Virgiana M, S.Pd", subject: "Bahasa Indonesia", rate: 50000, transport: 20000, status: "aktif", password: "fransiska" },
-    { id: "198505102018031004", name: "Ismadi, S.Pd", subject: "Fisika", rate: 55000, transport: 25000, status: "aktif", password: "ismadi" },
-    { id: "198810052019052005", name: "WS. Inggried Budiarti, S.Pd", subject: "Informatika", rate: 50000, transport: 20000, status: "aktif", password: "inggried" },
-    { id: "199606142023022006", name: "Yunita Mentari Putri, S. Sn", subject: "Seni Budaya", rate: 45000, transport: 20000, status: "aktif", password: "yunita" },
-    { id: "198712252016031007", name: "Atmo Kusumo, S.Pd.", subject: "Penjasorkes", rate: 45000, transport: 20000, status: "aktif", password: "atmo" }
+    { id: "199003122022031001", name: "Anom Kudho Winanto, S.Sn.", subject: "Seni Budaya", rate: 50000, transport: 20000, status: "aktif", password: "anom312" },
+    { id: "199208152021022002", name: "Brigita Ajeng Dwiandari, S.Pd", subject: "Matematika", rate: 50000, transport: 20000, status: "aktif", password: "brigita815" },
+    { id: "199411202022032003", name: "Fransiska Virgiana M, S.Pd", subject: "Bahasa Indonesia", rate: 50000, transport: 20000, status: "aktif", password: "fransiska112" },
+    { id: "198505102018031004", name: "Ismadi, S.Pd", subject: "Fisika", rate: 55000, transport: 25000, status: "aktif", password: "ismadi510" },
+    { id: "198810052019052005", name: "WS. Inggried Budiarti, S.Pd", subject: "Informatika", rate: 50000, transport: 20000, status: "aktif", password: "inggried005" },
+    { id: "199606142023022006", name: "Yunita Mentari Putri, S. Sn", subject: "Seni Budaya", rate: 45000, transport: 20000, status: "aktif", password: "yunita614" },
+    { id: "198712252016031007", name: "Atmo Kusumo, S.Pd.", subject: "Penjasorkes", rate: 45000, transport: 20000, status: "aktif", password: "atmo225" }
   ];
   
   // Generate realistic attendance for the current month
@@ -1357,7 +1357,7 @@ function openGuruModal(isEdit = false, id = null) {
     modalTitle.textContent = "Tambah Data Guru GTT";
     document.getElementById("guruIndex").value = "";
     document.getElementById("guruNuptk").disabled = false;
-    document.getElementById("guruPassword").value = "guru123";
+    document.getElementById("guruPassword").value = generateRandomPassword(8);
   }
   
   // Reset password visibility mode to hidden (password)
@@ -2677,7 +2677,7 @@ async function saveAttendanceToSupabase(payload, isUpdate = false, logId = null)
   
   document.getElementById("btnLogoutBtn").addEventListener("click", logout);
   
-  // --- Password Toggle Handlers ---
+  // --- Password Toggle & Generator Handlers ---
   document.querySelectorAll(".btn-toggle-password").forEach(btn => {
     btn.addEventListener("click", function() {
       const container = this.closest(".password-input-container");
@@ -2694,4 +2694,30 @@ async function saveAttendanceToSupabase(payload, isUpdate = false, logId = null)
       }
     });
   });
+
+  const btnGenPass = document.getElementById("btnGenerateGuruPassword");
+  if (btnGenPass) {
+    btnGenPass.addEventListener("click", () => {
+      const passInput = document.getElementById("guruPassword");
+      const toggleBtn = document.getElementById("toggleGuruPassword");
+      if (passInput) {
+        passInput.value = generateRandomPassword(8);
+        passInput.type = "text";
+      }
+      if (toggleBtn) {
+        toggleBtn.innerHTML = '<i data-lucide="eye-off"></i>';
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+      }
+    });
+  }
+}
+
+// Password Generator Utility
+function generateRandomPassword(length = 8) {
+  const chars = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let pass = "";
+  for (let i = 0; i < length; i++) {
+    pass += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return pass;
 }

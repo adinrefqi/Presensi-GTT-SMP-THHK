@@ -287,6 +287,9 @@ textarea { min-height: 82px; resize: vertical; }
 .password-input-container .input-control {
   padding-right: 42px;
 }
+.password-input-container:has(.btn-generate-password) .input-control {
+  padding-right: 118px;
+}
 .btn-toggle-password {
   position: absolute;
   right: 6px;
@@ -305,6 +308,9 @@ textarea { min-height: 82px; resize: vertical; }
   cursor: pointer;
   transition: color var(--transition-fast), background-color var(--transition-fast);
 }
+.password-input-container:has(.btn-generate-password) .btn-toggle-password {
+  right: 76px;
+}
 .btn-toggle-password:hover {
   color: var(--text-primary);
   background: var(--bg-subtle);
@@ -312,6 +318,36 @@ textarea { min-height: 82px; resize: vertical; }
 .btn-toggle-password svg {
   width: 17px;
   height: 17px;
+  pointer-events: none;
+}
+.btn-generate-password {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 30px;
+  padding: 0 9px;
+  color: var(--primary);
+  background: var(--primary-light);
+  border: 1px solid rgba(8, 127, 115, 0.25);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.73rem;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: all var(--transition-fast);
+}
+.btn-generate-password:hover {
+  color: #fff;
+  background: var(--primary);
+  border-color: var(--primary);
+}
+.btn-generate-password svg {
+  width: 13px;
+  height: 13px;
   pointer-events: none;
 }
 

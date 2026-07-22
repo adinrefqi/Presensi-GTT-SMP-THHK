@@ -77,16 +77,16 @@ INSERT INTO public.admins (username, password, name) VALUES
 ('elsa', 'admin123', 'Elsa Angreani, S.T')
 ON CONFLICT (username) DO NOTHING;
 
--- Data Guru GTT Awal
-INSERT INTO public.teachers (id, name, subject, rate, transport, status) VALUES
-('199003122022031001', 'Anom Kudho Winanto, S.Sn.', 'Seni Budaya', 50000, 20000, 'aktif'),
-('199208152021022002', 'Brigita Ajeng Dwiandari, S.Pd', 'Matematika', 50000, 20000, 'aktif'),
-('199411202022032003', 'Fransiska Virgiana M, S.Pd', 'Bahasa Indonesia', 50000, 20000, 'aktif'),
-('198505102018031004', 'Ismadi, S.Pd', 'Fisika', 55000, 25000, 'aktif'),
-('198810052019052005', 'WS. Inggried Budiarti, S.Pd', 'Informatika', 50000, 20000, 'aktif'),
-('199606142023022006', 'Yunita Mentari Putri, S. Sn', 'Seni Budaya', 45000, 20000, 'aktif'),
-('198712252016031007', 'Atmo Kusumo, S.Pd.', 'Penjasorkes', 45000, 20000, 'aktif')
-ON CONFLICT (id) DO NOTHING;
+-- Data Guru GTT Awal (Dengan Password Unik Setiap Guru)
+INSERT INTO public.teachers (id, name, subject, rate, transport, status, password) VALUES
+('199003122022031001', 'Anom Kudho Winanto, S.Sn.', 'Seni Budaya', 50000, 20000, 'aktif', 'anom312'),
+('199208152021022002', 'Brigita Ajeng Dwiandari, S.Pd', 'Matematika', 50000, 20000, 'aktif', 'brigita815'),
+('199411202022032003', 'Fransiska Virgiana M, S.Pd', 'Bahasa Indonesia', 50000, 20000, 'aktif', 'fransiska112'),
+('198505102018031004', 'Ismadi, S.Pd', 'Fisika', 55000, 25000, 'aktif', 'ismadi510'),
+('198810052019052005', 'WS. Inggried Budiarti, S.Pd', 'Informatika', 50000, 20000, 'aktif', 'inggried005'),
+('199606142023022006', 'Yunita Mentari Putri, S. Sn', 'Seni Budaya', 45000, 20000, 'aktif', 'yunita614'),
+('198712252016031007', 'Atmo Kusumo, S.Pd.', 'Penjasorkes', 45000, 20000, 'aktif', 'atmo225')
+ON CONFLICT (id) DO UPDATE SET password = EXCLUDED.password;
 
 -- Data Pengaturan Default
 INSERT INTO public.settings (id, school_name, school_address, principal_name, principal_nip, treasurer_name, treasurer_nip)
