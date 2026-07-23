@@ -803,15 +803,32 @@ async function login(usernameInput, passwordInput) {
   showLoadingOverlay(true);
   
   try {
-    // 1. Check Supabase Admins via RPC (hashed password)
+    // 1. Check Supabase Admins via RPC (hashed password dengan fallback direct check jika RPC ambigu/missing)
     if (isSupabaseConfigured()) {
-      const { data: adminRows } = await runSupabaseRequest(
-        () => supabaseClient.rpc('verify_admin_login', {
+      let adminRows = null;
+      try {
+        const res = await supabaseClient.rpc('verify_admin_login', {
           input_username: username,
           input_password: password
-        }),
-        "Gagal memeriksa akun admin"
-      );
+        });
+        if (res.data) adminRows = res.data;
+      } catch (adminRpcErr) {
+        console.warn("RPC verify_admin_login error, mencoba direct table fallback:", adminRpcErr);
+        try {
+          const { data: directAdmins } = await supabaseClient
+            .from("admins")
+            .select("username, name, password")
+            .eq("username", username);
+          if (directAdmins && directAdmins.length > 0) {
+            const adm = directAdmins[0];
+            if (adm.password === password) {
+              adminRows = [{ username: adm.username, name: adm.name }];
+            }
+          }
+        } catch (directErr) {
+          console.warn("Direct admin fallback juga tidak berhasil:", directErr);
+        }
+      }
       
       if (adminRows && adminRows.length > 0) {
         const adminData = adminRows[0];

@@ -33,6 +33,18 @@ WHERE password NOT LIKE '$2a$%' AND password NOT LIKE '$2b$%';
 -- Password tidak pernah dikirim kembali ke client
 -- ============================================================
 
+-- HAPUS FUNGSI LAMA AGAR TIDAK TERJADI DUPLIKASI ATAU AMBIGUITAS PARAMETER DI POSTGREST
+DROP FUNCTION IF EXISTS public.verify_admin_login(text, text);
+DROP FUNCTION IF EXISTS public.verify_admin_login(varchar, varchar);
+DROP FUNCTION IF EXISTS public.verify_admin_login CASCADE;
+
+DROP FUNCTION IF EXISTS public.verify_teacher_login(text);
+DROP FUNCTION IF EXISTS public.verify_teacher_login(varchar);
+DROP FUNCTION IF EXISTS public.verify_teacher_login CASCADE;
+
+DROP FUNCTION IF EXISTS public.upsert_teacher_with_hash CASCADE;
+DROP FUNCTION IF EXISTS public.update_admin_password CASCADE;
+
 -- Fungsi login admin: mengembalikan data admin jika cocok
 CREATE OR REPLACE FUNCTION verify_admin_login(input_username TEXT, input_password TEXT)
 RETURNS TABLE(username VARCHAR, name VARCHAR) AS $$
