@@ -17,9 +17,21 @@ ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH T
 
 UPDATE public.settings SET id = 1 WHERE id IS NULL;
 
+-- Tambahkan Primary Key pada settings jika belum ada
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.table_constraints 
+        WHERE table_name = 'settings' AND constraint_type = 'PRIMARY KEY'
+    ) THEN
+        ALTER TABLE public.settings ADD PRIMARY KEY (id);
+    END IF;
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
 INSERT INTO public.settings (id, school_name, school_address, principal_name, principal_nip, treasurer_name, treasurer_nip)
-VALUES (1, 'SMP THHK Tegal', 'Jl. Dr. Sutomo No.50, Kota Tegal', 'Haryanto, S.Pd., M.M.', '19740512 199903 1 002', 'Siti Rahmawati, A.Md.', '-')
-ON CONFLICT (id) DO NOTHING;
+SELECT 1, 'SMP THHK Tegal', 'Jl. Dr. Sutomo No.50, Kota Tegal', 'Haryanto, S.Pd., M.M.', '19740512 199903 1 002', 'Siti Rahmawati, A.Md.', '-'
+WHERE NOT EXISTS (SELECT 1 FROM public.settings);
 
 -- ============================================================
 -- BAGIAN 1: AKTIFKAN EXTENSION PGCRYPTO
