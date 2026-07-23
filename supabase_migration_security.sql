@@ -18,10 +18,10 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 -- BAGIAN 2: HASH SEMUA PASSWORD YANG SUDAH ADA (MIGRASI DATA)
 -- ============================================================
 
--- Hash password admin yang masih plain text
+-- Update / Set password admin ('admin' & 'elsa') ke 'admin1122' dengan hash bcrypt
 UPDATE public.admins
-SET password = crypt(password, gen_salt('bf', 8))
-WHERE password NOT LIKE '$2a$%' AND password NOT LIKE '$2b$%';
+SET password = crypt('admin1122', gen_salt('bf', 8))
+WHERE username IN ('admin', 'elsa');
 
 -- Hash password guru yang masih plain text
 UPDATE public.teachers

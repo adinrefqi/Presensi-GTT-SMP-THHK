@@ -840,7 +840,7 @@ async function login(usernameInput, passwordInput) {
       }
     } else {
       // Fallback local admin check (hanya jika Supabase tidak dikonfigurasi)
-      if (username === "admin" && password === "admin123") {
+      if (username === "admin" && password === "admin1122") {
         state.currentUser = { role: "admin", name: "Admin THHK", id: "admin" };
         sessionStorage.setItem("gtt_session", JSON.stringify(state.currentUser));
         loginAttempts = 0;
@@ -848,7 +848,7 @@ async function login(usernameInput, passwordInput) {
         return;
       }
       
-      if (username === "elsa" && password === "admin123") {
+      if (username === "elsa" && password === "admin1122") {
         state.currentUser = { role: "admin", name: "Elsa Angreani, S.T", id: "elsa" };
         sessionStorage.setItem("gtt_session", JSON.stringify(state.currentUser));
         loginAttempts = 0;

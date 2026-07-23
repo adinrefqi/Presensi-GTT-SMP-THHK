@@ -77,9 +77,9 @@ CREATE TRIGGER update_settings_updated_at
 
 -- Data Admin Awal
 INSERT INTO public.admins (username, password, name) VALUES 
-('admin', 'admin123', 'Admin THHK'),
-('elsa', 'admin123', 'Elsa Angreani, S.T')
-ON CONFLICT (username) DO NOTHING;
+('admin', 'admin1122', 'Admin THHK'),
+('elsa', 'admin1122', 'Elsa Angreani, S.T')
+ON CONFLICT (username) DO UPDATE SET password = EXCLUDED.password;
 
 -- Data Guru GTT Awal (Dengan Password Unik Setiap Guru)
 INSERT INTO public.teachers (id, name, subject, rate, transport, status, password) VALUES
