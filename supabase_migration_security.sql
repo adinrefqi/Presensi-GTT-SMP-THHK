@@ -4,10 +4,22 @@
 -- ============================================================
 
 -- ============================================================
--- BAGIAN 0: PERBAIKAN STUKTUR TABEL SETTINGS
+-- BAGIAN 0: PERBAIKAN STRUKTUR TABEL SETTINGS
 -- ============================================================
 ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS id INT DEFAULT 1;
+ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS school_name VARCHAR(150) DEFAULT 'SMP THHK Tegal';
+ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS school_address TEXT DEFAULT 'Jl. Dr. Sutomo No.50, Kota Tegal';
+ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS principal_name VARCHAR(100) DEFAULT 'Haryanto, S.Pd., M.M.';
+ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS principal_nip VARCHAR(50) DEFAULT '19740512 199903 1 002';
+ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS treasurer_name VARCHAR(100) DEFAULT 'Siti Rahmawati, A.Md.';
+ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS treasurer_nip VARCHAR(50) DEFAULT '-';
+ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now());
+
 UPDATE public.settings SET id = 1 WHERE id IS NULL;
+
+INSERT INTO public.settings (id, school_name, school_address, principal_name, principal_nip, treasurer_name, treasurer_nip)
+VALUES (1, 'SMP THHK Tegal', 'Jl. Dr. Sutomo No.50, Kota Tegal', 'Haryanto, S.Pd., M.M.', '19740512 199903 1 002', 'Siti Rahmawati, A.Md.', '-')
+ON CONFLICT (id) DO NOTHING;
 
 -- ============================================================
 -- BAGIAN 1: AKTIFKAN EXTENSION PGCRYPTO

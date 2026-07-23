@@ -2704,19 +2704,28 @@ async function saveAttendanceToSupabase(payload, isUpdate = false, logId = null)
     showLoadingOverlay(true);
     try {
       if (isSupabaseConfigured()) {
-        const { error } = await supabaseClient
-          .from("settings")
-          .update({
+        try {
+          const settingsPayload = {
             school_name: schName,
             school_address: schAddress,
             principal_name: prName,
             principal_nip: prNip,
             treasurer_name: trName,
             treasurer_nip: trNip
-          })
-          .not("school_name", "is", null);
-          
-        if (error) throw error;
+          };
+
+          const { data: updatedRows, error: updErr } = await supabaseClient
+            .from("settings")
+            .update(settingsPayload)
+            .not("school_name", "is", null)
+            .select();
+
+          if (updErr || !updatedRows || updatedRows.length === 0) {
+            await supabaseClient.from("settings").insert({ id: 1, ...settingsPayload });
+          }
+        } catch (spErr) {
+          console.warn("Gagal memperbarui pengaturan ke Supabase online, menyimpan secara lokal:", spErr);
+        }
       }
       
       state.settings.schoolName = schName;
