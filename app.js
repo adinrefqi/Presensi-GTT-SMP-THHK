@@ -228,7 +228,7 @@ async function loadData() {
         () => supabaseClient
           .from("settings")
           .select("*")
-          .eq("id", 1)
+          .limit(1)
           .maybeSingle(),
         "Gagal mengambil pengaturan sekolah"
       ),
@@ -574,7 +574,41 @@ function initDateDisplay() {
   if (filterTahunEl) filterTahunEl.value = currentYearVal;
 }
 
-// SAMPLE DATA GENERATOR
+// HELPER FOR RESILIENT TEACHER SAVING TO SUPABASE
+async function saveTeacherSupabase(t) {
+  if (!isSupabaseConfigured()) return;
+  const teacherPayload = {
+    id: t.id,
+    name: t.name,
+    subject: t.subject,
+    rate: t.rate,
+    transport: t.transport,
+    status: t.status,
+    password: t.password || "guru123"
+  };
+
+  const { error: rpcErr } = await supabaseClient.rpc('upsert_teacher_with_hash', {
+    p_id: t.id,
+    p_name: t.name,
+    p_subject: t.subject,
+    p_rate: t.rate,
+    p_transport: t.transport,
+    p_status: t.status,
+    p_password: t.password || "guru123"
+  });
+
+  if (rpcErr) {
+    const errStr = String(rpcErr.message || rpcErr.details || JSON.stringify(rpcErr)).toLowerCase();
+    if (rpcErr.code === 'PGRST202' || errStr.includes("could not find the function") || errStr.includes("schema cache")) {
+      console.warn("RPC upsert_teacher_with_hash tidak ditemukan di Supabase schema cache. Menjalankan fallback direct table upsert...");
+      const { error: tableErr } = await supabaseClient.from("teachers").upsert(teacherPayload);
+      if (tableErr) throw tableErr;
+    } else {
+      throw rpcErr;
+    }
+  }
+}
+
 // SAMPLE DATA GENERATOR
 async function loadSampleData(showAlert = true) {
   // Demo Teachers (Unique passwords assigned to each teacher)
@@ -663,18 +697,9 @@ async function loadSampleData(showAlert = true) {
       await supabaseClient.from("attendance").delete().neq("id", "");
       await supabaseClient.from("teachers").delete().neq("id", "");
       
-      // Insert teachers via RPC (password akan di-hash di server)
+      // Insert teachers via RPC (dengan fallback ke direct table upsert jika RPC belum di-install)
       for (const t of sampleTeachers) {
-        const { error: tErr } = await supabaseClient.rpc('upsert_teacher_with_hash', {
-          p_id: t.id,
-          p_name: t.name,
-          p_subject: t.subject,
-          p_rate: t.rate,
-          p_transport: t.transport,
-          p_status: t.status,
-          p_password: t.password || "guru123"
-        });
-        if (tErr) throw tErr;
+        await saveTeacherSupabase(t);
       }
       
       // Insert attendance in chunks/full list
@@ -2290,7 +2315,7 @@ async function resetAllData() {
           principal_nip: "19740512 199903 1 002",
           treasurer_name: "Siti Rahmawati, A.Md.",
           treasurer_nip: "-"
-        }).eq("id", 1);
+        }).not("school_name", "is", null);
       }
       
       state.teachers = [];
@@ -2392,17 +2417,15 @@ function setupEventListeners() {
       if (editingId) {
         // Edit mode — SECURITY: gunakan RPC untuk hash password di server
         if (isSupabaseConfigured()) {
-          const { error } = await supabaseClient.rpc('upsert_teacher_with_hash', {
-            p_id: editingId,
-            p_name: nameField,
-            p_subject: mapelField,
-            p_rate: rateField,
-            p_transport: transportField,
-            p_status: statusField,
-            p_password: passwordField
+          await saveTeacherSupabase({
+            id: editingId,
+            name: nameField,
+            subject: mapelField,
+            rate: rateField,
+            transport: transportField,
+            status: statusField,
+            password: passwordField
           });
-            
-          if (error) throw error;
         }
         
         const idx = state.teachers.findIndex(t => t.id === editingId);
@@ -2428,17 +2451,15 @@ function setupEventListeners() {
         
         // SECURITY: gunakan RPC untuk hash password di server
         if (isSupabaseConfigured()) {
-          const { error } = await supabaseClient.rpc('upsert_teacher_with_hash', {
-            p_id: idField,
-            p_name: nameField,
-            p_subject: mapelField,
-            p_rate: rateField,
-            p_transport: transportField,
-            p_status: statusField,
-            p_password: passwordField
+          await saveTeacherSupabase({
+            id: idField,
+            name: nameField,
+            subject: mapelField,
+            rate: rateField,
+            transport: transportField,
+            status: statusField,
+            password: passwordField
           });
-            
-          if (error) throw error;
         }
         
         state.teachers.push({
@@ -2671,7 +2692,7 @@ async function saveAttendanceToSupabase(payload, isUpdate = false, logId = null)
             treasurer_name: trName,
             treasurer_nip: trNip
           })
-          .eq("id", 1);
+          .not("school_name", "is", null);
           
         if (error) throw error;
       }

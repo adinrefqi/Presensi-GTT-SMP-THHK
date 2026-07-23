@@ -4,6 +4,12 @@
 -- ============================================================
 
 -- ============================================================
+-- BAGIAN 0: PERBAIKAN STUKTUR TABEL SETTINGS
+-- ============================================================
+ALTER TABLE public.settings ADD COLUMN IF NOT EXISTS id INT DEFAULT 1;
+UPDATE public.settings SET id = 1 WHERE id IS NULL;
+
+-- ============================================================
 -- BAGIAN 1: AKTIFKAN EXTENSION PGCRYPTO
 -- ============================================================
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
