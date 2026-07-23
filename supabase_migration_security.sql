@@ -19,11 +19,23 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 -- ============================================================
 
 -- Update / Set password admin ('admin' & 'elsa') ke 'admin1122' dengan hash bcrypt
-UPDATE public.admins
-SET password = crypt('admin1122', gen_salt('bf', 8))
-WHERE username IN ('admin', 'elsa');
+INSERT INTO public.admins (username, password, name) VALUES
+('admin', crypt('admin1122', gen_salt('bf', 8)), 'Admin THHK'),
+('elsa', crypt('admin1122', gen_salt('bf', 8)), 'Elsa Angreani, S.T')
+ON CONFLICT (username) DO UPDATE SET password = crypt('admin1122', gen_salt('bf', 8));
 
--- Hash password guru yang masih plain text
+-- Pastikan data guru default selalu ada (dengan password terenkripsi)
+INSERT INTO public.teachers (id, name, subject, rate, transport, status, password) VALUES
+('199003122022031001', 'Anom Kudho Winanto, S.Sn.', 'Seni Budaya', 50000, 20000, 'aktif', crypt('anom312', gen_salt('bf', 8))),
+('199208152021022002', 'Brigita Ajeng Dwiandari, S.Pd', 'Matematika', 50000, 20000, 'aktif', crypt('brigita815', gen_salt('bf', 8))),
+('199411202022032003', 'Fransiska Virgiana M, S.Pd', 'Bahasa Indonesia', 50000, 20000, 'aktif', crypt('fransiska112', gen_salt('bf', 8))),
+('198505102018031004', 'Ismadi, S.Pd', 'Fisika', 55000, 25000, 'aktif', crypt('ismadi510', gen_salt('bf', 8))),
+('198810052019052005', 'WS. Inggried Budiarti, S.Pd', 'Informatika', 50000, 20000, 'aktif', crypt('inggried005', gen_salt('bf', 8))),
+('199606142023022006', 'Yunita Mentari Putri, S. Sn', 'Seni Budaya', 45000, 20000, 'aktif', crypt('yunita614', gen_salt('bf', 8))),
+('198712252016031007', 'Atmo Kusumo, S.Pd.', 'Penjasorkes', 45000, 20000, 'aktif', crypt('atmo225', gen_salt('bf', 8)))
+ON CONFLICT (id) DO NOTHING;
+
+-- Hash password guru lain yang mungkin masih plain text
 UPDATE public.teachers
 SET password = crypt(password, gen_salt('bf', 8))
 WHERE password NOT LIKE '$2a$%' AND password NOT LIKE '$2b$%';

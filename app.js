@@ -263,15 +263,20 @@ async function loadData() {
     }
     
     if (teachersData) {
-      state.teachers = teachersData.map((t, idx) => ({
-        id: t.id,
-        name: t.name,
-        subject: t.subject,
-        rate: Number(t.rate),
-        transport: Number(t.transport),
-        status: t.status,
-        password: undefined // SECURITY: password tidak pernah disimpan di client state
-      }));
+      if (teachersData.length === 0) {
+        console.log("Tabel guru di Supabase kosong. Mengunggah data guru default otomatis...");
+        await loadSampleData(false);
+      } else {
+        state.teachers = teachersData.map((t, idx) => ({
+          id: t.id,
+          name: t.name,
+          subject: t.subject,
+          rate: Number(t.rate),
+          transport: Number(t.transport),
+          status: t.status,
+          password: undefined // SECURITY: password tidak pernah disimpan di client state
+        }));
+      }
     }
     
     if (attendanceData) {
