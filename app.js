@@ -10,6 +10,107 @@ function escapeHTML(str) {
   return div.innerHTML;
 }
 
+// ============================================================
+// MODERN TOAST NOTIFICATION SYSTEM
+// ============================================================
+function showToast(message, type = 'auto', title = null, duration = 3800) {
+  if (typeof document === 'undefined') return;
+
+  let container = document.getElementById("toastContainer");
+  if (!container) {
+    container = document.createElement("div");
+    container.id = "toastContainer";
+    document.body.appendChild(container);
+  }
+
+  const msgStr = String(message || '');
+  const msgLower = msgStr.toLowerCase();
+
+  let resolvedType = type;
+  if (type === 'auto' || !type) {
+    if (msgLower.includes("gagal") || msgLower.includes("error") || msgLower.includes("salah") || msgLower.includes("dikunci") || msgLower.includes("terhapus")) {
+      resolvedType = "error";
+    } else if (msgLower.includes("peringatan") || msgLower.includes("warning") || msgLower.includes("periksa") || msgLower.includes("kosong")) {
+      resolvedType = "warning";
+    } else if (msgLower.includes("info") || msgLower.includes("informasi") || msgLower.includes("koneksi")) {
+      resolvedType = "info";
+    } else {
+      resolvedType = "success";
+    }
+  }
+
+  const icons = {
+    success: 'check-circle-2',
+    error: 'alert-circle',
+    warning: 'alert-triangle',
+    info: 'info'
+  };
+
+  const defaultTitles = {
+    success: 'Berhasil',
+    error: 'Gagal / Kesalahan',
+    warning: 'Peringatan',
+    info: 'Informasi'
+  };
+
+  const toast = document.createElement("div");
+  toast.className = `toast-item toast-${resolvedType}`;
+
+  const toastTitle = title || defaultTitles[resolvedType] || 'Notifikasi';
+
+  toast.innerHTML = `
+    <div class="toast-icon">
+      <i data-lucide="${icons[resolvedType] || 'check-circle-2'}"></i>
+    </div>
+    <div class="toast-content">
+      <div class="toast-title">${escapeHTML(toastTitle)}</div>
+      <div class="toast-message">${escapeHTML(msgStr)}</div>
+    </div>
+    <button class="toast-close" title="Tutup">
+      <i data-lucide="x"></i>
+    </button>
+    <div class="toast-progress" style="animation: toastProgress ${duration}ms linear forwards;"></div>
+  `;
+
+  container.appendChild(toast);
+
+  if (typeof lucide !== 'undefined') {
+    try { lucide.createIcons({ targets: [toast] }); } catch (e) {}
+  }
+
+  // Trigger animation
+  requestAnimationFrame(() => {
+    toast.classList.add("show");
+  });
+
+  const dismiss = () => {
+    toast.classList.remove("show");
+    toast.classList.add("hide");
+    setTimeout(() => {
+      if (toast.parentNode) toast.parentNode.removeChild(toast);
+    }, 350);
+  };
+
+  const closeBtn = toast.querySelector(".toast-close");
+  if (closeBtn) closeBtn.addEventListener("click", dismiss);
+
+  const timer = setTimeout(dismiss, duration);
+
+  toast.addEventListener("mouseenter", () => {
+    const progress = toast.querySelector(".toast-progress");
+    if (progress) progress.style.animationPlayState = 'paused';
+    clearTimeout(timer);
+  });
+}
+
+// OVERRIDE NATIVE BROWSER ALERT WITH SLEEK MODERN TOAST
+if (typeof window !== 'undefined') {
+  window.showToast = showToast;
+  window.alert = function(msg) {
+    showToast(msg, 'auto');
+  };
+}
+
 // SECURITY: Brute Force Protection
 let loginAttempts = 0;
 let loginLockUntil = 0;
