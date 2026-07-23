@@ -114,7 +114,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Fungsi untuk menyimpan guru baru DENGAN hashing password
+-- Fungsi untuk menyimpan guru baru DENGAN hashing password (opsional update password jika diisi)
 CREATE OR REPLACE FUNCTION upsert_teacher_with_hash(
   p_id VARCHAR,
   p_name VARCHAR,
@@ -129,18 +129,36 @@ BEGIN
   -- Cek apakah guru sudah ada
   IF EXISTS (SELECT 1 FROM public.teachers WHERE teachers.id = p_id) THEN
     -- Update existing teacher
-    UPDATE public.teachers SET
-      name = p_name,
-      subject = p_subject,
-      rate = p_rate,
-      transport = p_transport,
-      status = p_status,
-      password = crypt(p_password, gen_salt('bf', 8))
-    WHERE teachers.id = p_id;
+    IF p_password IS NULL OR p_password = '' THEN
+      UPDATE public.teachers SET
+        name = p_name,
+        subject = p_subject,
+        rate = p_rate,
+        transport = p_transport,
+        status = p_status
+      WHERE teachers.id = p_id;
+    ELSE
+      UPDATE public.teachers SET
+        name = p_name,
+        subject = p_subject,
+        rate = p_rate,
+        transport = p_transport,
+        status = p_status,
+        password = crypt(p_password, gen_salt('bf', 8))
+      WHERE teachers.id = p_id;
+    END IF;
   ELSE
-    -- Insert new teacher
+    -- Insert new teacher (default password 'guru123' jika p_password kosong)
     INSERT INTO public.teachers (id, name, subject, rate, transport, status, password)
-    VALUES (p_id, p_name, p_subject, p_rate, p_transport, p_status, crypt(p_password, gen_salt('bf', 8)));
+    VALUES (
+      p_id,
+      p_name,
+      p_subject,
+      p_rate,
+      p_transport,
+      p_status,
+      crypt(COALESCE(NULLIF(p_password, ''), 'guru123'), gen_salt('bf', 8))
+    );
   END IF;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;

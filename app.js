@@ -588,9 +588,12 @@ async function saveTeacherSupabase(t) {
     subject: t.subject,
     rate: t.rate,
     transport: t.transport,
-    status: t.status,
-    password: t.password || "guru123"
+    status: t.status
   };
+
+  if (t.password && t.password.trim() !== "") {
+    teacherPayload.password = t.password.trim();
+  }
 
   const { error: rpcErr } = await supabaseClient.rpc('upsert_teacher_with_hash', {
     p_id: t.id,
@@ -599,7 +602,7 @@ async function saveTeacherSupabase(t) {
     p_rate: t.rate,
     p_transport: t.transport,
     p_status: t.status,
-    p_password: t.password || "guru123"
+    p_password: t.password || ""
   });
 
   if (rpcErr) {
@@ -1431,7 +1434,7 @@ function openGuruModal(isEdit = false, id = null) {
       document.getElementById("guruTransport").value = teacher.transport;
       document.getElementById("guruStatus").value = teacher.status;
       document.getElementById("guruPassword").value = "";
-      document.getElementById("guruPassword").placeholder = "Masukkan password baru (min. 6 karakter)";
+      document.getElementById("guruPassword").placeholder = "Kosongkan jika tidak ingin mengubah password";
     }
   } else {
     modalTitle.textContent = "Tambah Data Guru GTT";
@@ -2425,19 +2428,18 @@ function setupEventListeners() {
     const rateField = Number(document.getElementById("guruRate").value);
     const transportField = Number(document.getElementById("guruTransport").value);
     const statusField = document.getElementById("guruStatus").value;
-    const passwordField = document.getElementById("guruPassword").value.trim() || "guru123";
+    const passwordField = document.getElementById("guruPassword").value.trim();
     const editingId = document.getElementById("guruIndex").value; // Empty if creating
     
-    // SECURITY: Validasi minimum password
-    if (passwordField.length < MIN_PASSWORD_LENGTH) {
-      alert(`Password minimal ${MIN_PASSWORD_LENGTH} karakter!`);
-      return;
-    }
-    
-    showLoadingOverlay(true);
-    try {
-      if (editingId) {
-        // Edit mode — SECURITY: gunakan RPC untuk hash password di server
+    if (editingId) {
+      // Edit mode: Jika password diisi, validasi MIN_PASSWORD_LENGTH. Jika kosong, pertahankan password lama.
+      if (passwordField && passwordField.length < MIN_PASSWORD_LENGTH) {
+        alert(`Password minimal ${MIN_PASSWORD_LENGTH} karakter! Kosongkan jika tidak ingin mengubah password.`);
+        return;
+      }
+      
+      showLoadingOverlay(true);
+      try {
         if (isSupabaseConfigured()) {
           await saveTeacherSupabase({
             id: editingId,
@@ -2446,7 +2448,7 @@ function setupEventListeners() {
             rate: rateField,
             transport: transportField,
             status: statusField,
-            password: passwordField
+            password: passwordField || ""
           });
         }
         
@@ -2462,16 +2464,33 @@ function setupEventListeners() {
             // SECURITY: password tidak disimpan di client state
           };
         }
-      } else {
-        // Add mode
-        // Validate unique ID
-        if (state.teachers.some(t => t.id === idField)) {
-          alert("ID/NUPTK Guru ini sudah terdaftar! Harap gunakan ID yang unik.");
-          showLoadingOverlay(false);
-          return;
-        }
         
-        // SECURITY: gunakan RPC untuk hash password di server
+        saveData();
+        renderAllViews();
+        closeGuruModal();
+        alert("Data guru berhasil diperbarui!");
+      } catch (err) {
+        console.error("Gagal menyimpan data guru:", err);
+        alert("Gagal menyimpan data guru: " + getSupabaseErrorMessage(err));
+      } finally {
+        showLoadingOverlay(false);
+      }
+    } else {
+      // Add mode: Password default "guru123" jika dikosongkan
+      const finalPassword = passwordField || "guru123";
+      if (finalPassword.length < MIN_PASSWORD_LENGTH) {
+        alert(`Password minimal ${MIN_PASSWORD_LENGTH} karakter!`);
+        return;
+      }
+      
+      // Validate unique ID
+      if (state.teachers.some(t => t.id === idField)) {
+        alert("ID/NUPTK Guru ini sudah terdaftar! Harap gunakan ID yang unik.");
+        return;
+      }
+      
+      showLoadingOverlay(true);
+      try {
         if (isSupabaseConfigured()) {
           await saveTeacherSupabase({
             id: idField,
@@ -2480,7 +2499,7 @@ function setupEventListeners() {
             rate: rateField,
             transport: transportField,
             status: statusField,
-            password: passwordField
+            password: finalPassword
           });
         }
         
@@ -2491,20 +2510,18 @@ function setupEventListeners() {
           rate: rateField,
           transport: transportField,
           status: statusField
-          // SECURITY: password tidak disimpan di client state
         });
+        
+        saveData();
+        renderAllViews();
+        closeGuruModal();
+        alert("Guru GTT baru berhasil ditambahkan!");
+      } catch (err) {
+        console.error("Gagal menambah guru:", err);
+        alert("Gagal menambah guru: " + getSupabaseErrorMessage(err));
+      } finally {
+        showLoadingOverlay(false);
       }
-
-      
-      saveData();
-      renderAllViews();
-      closeGuruModal();
-      alert("Data guru berhasil disimpan!");
-    } catch (err) {
-      console.error("Gagal menyimpan data guru:", err);
-      alert("Gagal menyimpan ke database: " + err.message);
-    } finally {
-      showLoadingOverlay(false);
     }
   });
   
