@@ -926,3 +926,8 @@ body[data-theme="light"] .toast-item {
   to { width: 0%; }
 }
 
+/* Role & Utility Utility Classes */
+.hidden {
+  display: none !important;
+}
+

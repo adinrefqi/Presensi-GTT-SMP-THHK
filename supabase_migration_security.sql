@@ -56,7 +56,9 @@ INSERT INTO public.teachers (id, name, subject, rate, transport, status, passwor
 ('198505102018031004', 'Ismadi, S.Pd', 'Fisika', 55000, 25000, 'aktif', crypt('ismadi510', gen_salt('bf', 8))),
 ('198810052019052005', 'WS. Inggried Budiarti, S.Pd', 'Informatika', 50000, 20000, 'aktif', crypt('inggried005', gen_salt('bf', 8))),
 ('199606142023022006', 'Yunita Mentari Putri, S. Sn', 'Seni Budaya', 45000, 20000, 'aktif', crypt('yunita614', gen_salt('bf', 8))),
-('198712252016031007', 'Atmo Kusumo, S.Pd.', 'Penjasorkes', 45000, 20000, 'aktif', crypt('atmo225', gen_salt('bf', 8)))
+('198712252016031007', 'Atmo Kusumo, S.Pd.', 'Penjasorkes', 45000, 20000, 'aktif', crypt('atmo225', gen_salt('bf', 8))),
+('199307182023031008', 'Maulana Ainun Pratama, S.T', 'IPA', 50000, 20000, 'aktif', crypt('maulana008', gen_salt('bf', 8))),
+('199504122023032009', 'Nita Apriyatin, S.Pd.', 'Pendidikan Agama Kepercayaan', 50000, 20000, 'aktif', crypt('nita009', gen_salt('bf', 8)))
 ON CONFLICT (id) DO NOTHING;
 
 -- Hash password guru lain yang mungkin masih plain text

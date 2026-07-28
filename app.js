@@ -416,7 +416,7 @@ function loadDataFromStorage() {
   
   if (localTeachers) {
     const parsedTeachers = JSON.parse(localTeachers);
-    const hasNewTeachers = parsedTeachers.some(t => t.name.includes("Anom Kudho") || t.name.includes("Brigita Ajeng"));
+    const hasNewTeachers = parsedTeachers.some(t => t.name.includes("Nita Apriyatin"));
     if (!hasNewTeachers) {
       localStorage.removeItem("gtt_teachers");
       localStorage.removeItem("gtt_attendance");
@@ -678,6 +678,13 @@ function initDateDisplay() {
   const filterTahunEl = document.getElementById("filterPresensiTahun");
   if (filterBulanEl) filterBulanEl.value = currentMonthVal;
   if (filterTahunEl) filterTahunEl.value = currentYearVal;
+
+  const histBulanEl = document.getElementById("historyGuruBulan");
+  const histTahunEl = document.getElementById("historyGuruTahun");
+  const histTanggalEl = document.getElementById("historyGuruTanggal");
+  if (histBulanEl) histBulanEl.value = currentMonthVal;
+  if (histTahunEl) histTahunEl.value = currentYearVal;
+  if (histTanggalEl) histTanggalEl.value = dateStr;
 }
 
 // HELPER FOR RESILIENT TEACHER SAVING TO SUPABASE
@@ -728,7 +735,9 @@ async function loadSampleData(showAlert = true) {
     { id: "198505102018031004", name: "Ismadi, S.Pd", subject: "Fisika", rate: 55000, transport: 25000, status: "aktif", password: "ismadi510" },
     { id: "198810052019052005", name: "WS. Inggried Budiarti, S.Pd", subject: "Informatika", rate: 50000, transport: 20000, status: "aktif", password: "inggried005" },
     { id: "199606142023022006", name: "Yunita Mentari Putri, S. Sn", subject: "Seni Budaya", rate: 45000, transport: 20000, status: "aktif", password: "yunita614" },
-    { id: "198712252016031007", name: "Atmo Kusumo, S.Pd.", subject: "Penjasorkes", rate: 45000, transport: 20000, status: "aktif", password: "atmo225" }
+    { id: "198712252016031007", name: "Atmo Kusumo, S.Pd.", subject: "Penjasorkes", rate: 45000, transport: 20000, status: "aktif", password: "atmo225" },
+    { id: "199307182023031008", name: "Maulana Ainun Pratama, S.T", subject: "IPA", rate: 50000, transport: 20000, status: "aktif", password: "maulana008" },
+    { id: "199504122023032009", name: "Nita Apriyatin, S.Pd.", subject: "Pendidikan Agama Kepercayaan", rate: 50000, transport: 20000, status: "aktif", password: "nita009" }
   ];
   
   // Generate realistic attendance for the current month
@@ -775,6 +784,8 @@ async function loadSampleData(showAlert = true) {
         // Topics based on subject
         const topics = {
           "Fisika": ["Materi Tekanan Zat Cair", "Hukum Pascal", "Listrik Statis", "Gelombang Mekanik"],
+          "IPA": ["Klasifikasi Makhluk Hidup", "Sistem Pencernaan Manusia", "Pengukuran dan Besaran", "Ekosistem dan Lingkungan"],
+          "Pendidikan Agama Kepercayaan": ["Pengenalan Nilai Budi Pekerti", "Sejarah Kepercayaan Nusantara", "Praktik Olah Rasa dan Kebatinan", "Keharmonisan dan Toleransi"],
           "Bahasa Indonesia": ["Ulasan Teks Prosedur", "Menulis Puisi", "Membaca Berita Efektif", "Analisis Novel"],
           "Informatika": ["Logika Algoritma Dasar", "Desain Halaman Web", "Bahasa Pemrograman Python", "Sistem Jaringan Komputer"],
           "Bahasa Inggris": ["Tenses Grammar Practice", "Reading Narrative Text", "Speaking Conversation", "Writing Letter Mockup"],
@@ -1195,6 +1206,11 @@ function updateHeaderTitle(tabId) {
       shortTitle = "Data Guru";
       subText = "Kelola data profil, mata pelajaran, serta tarif honorarium GTT.";
       break;
+    case "history-guru":
+      mainTitle = "Histori Presensi Guru";
+      shortTitle = "Histori Guru";
+      subText = "Lihat dan pantau riwayat presensi detail khusus per individu guru GTT.";
+      break;
     case "presensi":
       mainTitle = "Input Presensi & KBM";
       shortTitle = "Input Presensi";
@@ -1222,6 +1238,8 @@ function renderTabSpecific(tabId) {
     renderDashboard();
   } else if (tabId === "guru") {
     renderGuruList();
+  } else if (tabId === "history-guru") {
+    renderHistoryGuruTab();
   } else if (tabId === "presensi") {
     renderPresensiForm();
     renderDetailedLogs();
@@ -1235,6 +1253,7 @@ function renderTabSpecific(tabId) {
 function renderAllViews() {
   renderDashboard();
   renderGuruList();
+  renderHistoryGuruTab();
   renderPresensiForm();
   renderDetailedLogs();
   renderRekapTable();
@@ -1499,6 +1518,9 @@ function renderGuruList() {
       <td><span class="badge badge-${t.status === 'aktif' ? 'active' : 'inactive'}">${escapeHTML(t.status)}</span></td>
       <td class="text-right">
         <div class="actions-cell" style="justify-content: flex-end;">
+          <button class="icon-btn view-history" onclick="viewTeacherHistory('${escapeHTML(t.id)}')" title="Lihat Histori Presensi Guru" style="color: var(--primary); background: rgba(13, 148, 136, 0.1); border-color: rgba(13, 148, 136, 0.2);">
+            <i data-lucide="history"></i>
+          </button>
           <button class="icon-btn edit" onclick="editTeacher('${escapeHTML(t.id)}')" title="Edit Data">
             <i data-lucide="edit-3"></i>
           </button>
@@ -1594,38 +1616,497 @@ window.deleteTeacher = async function(id) {
 };
 
 // ----------------------------------------------------
+// 2B. HISTORI PER GURU (ADMIN ONLY) VIEW FUNCTIONS
+// ----------------------------------------------------
+
+function renderHistoryGuruTab() {
+  const select = document.getElementById("historyGuruSelect");
+  if (!select) return;
+
+  const currentSelectedId = select.value;
+  select.innerHTML = '<option value="">-- Pilih Guru GTT --</option>';
+
+  const sortedTeachers = [...state.teachers].sort((a, b) => a.name.localeCompare(b.name, 'id'));
+
+  sortedTeachers.forEach(t => {
+    const opt = document.createElement("option");
+    opt.value = t.id;
+    opt.textContent = `${t.name} (${t.subject})`;
+    select.appendChild(opt);
+  });
+
+  let targetTeacherId = currentSelectedId;
+  if (!targetTeacherId && sortedTeachers.length > 0) {
+    targetTeacherId = sortedTeachers[0].id;
+  }
+
+  select.value = targetTeacherId || "";
+
+  updateHistoryGuruView(targetTeacherId);
+}
+
+function updateHistoryGuruView(teacherId) {
+  const profileBanner = document.getElementById("historyGuruProfileBanner");
+  const tbody = document.getElementById("historyGuruTableBody");
+  const countBadge = document.getElementById("historyGuruLogCountBadge");
+  const modeEl = document.getElementById("historyGuruMode");
+  const mode = modeEl ? modeEl.value : "bulanan";
+
+  const monthWrapper = document.getElementById("historyGuruBulanWrapper");
+  const dateWrapper = document.getElementById("historyGuruTanggalWrapper");
+
+  if (mode === "harian") {
+    if (monthWrapper) monthWrapper.style.display = "none";
+    if (dateWrapper) dateWrapper.style.display = "flex";
+  } else if (mode === "bulanan") {
+    if (monthWrapper) monthWrapper.style.display = "flex";
+    if (dateWrapper) dateWrapper.style.display = "none";
+  } else {
+    // "semua"
+    if (monthWrapper) monthWrapper.style.display = "none";
+    if (dateWrapper) dateWrapper.style.display = "none";
+  }
+
+  if (!teacherId) {
+    if (profileBanner) profileBanner.style.display = "none";
+    if (countBadge) countBadge.textContent = "0 Presensi";
+    if (tbody) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="7" class="text-center">
+            <div class="empty-state">
+              <i data-lucide="user-search"></i>
+              <p>Silakan pilih Guru GTT terlebih dahulu untuk melihat histori presensi.</p>
+            </div>
+          </td>
+        </tr>
+      `;
+      safeCreateIcons();
+    }
+    return;
+  }
+
+  const teacher = state.teachers.find(t => String(t.id) === String(teacherId));
+  if (!teacher) return;
+
+  let teacherLogs = state.attendance.filter(log => String(log.teacherId) === String(teacherId));
+
+  let periodText = "Semua Waktu";
+  if (mode === "harian") {
+    const selectedDate = document.getElementById("historyGuruTanggal").value;
+    teacherLogs = teacherLogs.filter(log => log.date === selectedDate);
+    periodText = formatIndonesianDate(selectedDate);
+  } else if (mode === "bulanan") {
+    const filterMonth = Number(document.getElementById("historyGuruBulan").value);
+    const filterYear = Number(document.getElementById("historyGuruTahun").value);
+    const monthsIndo = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+    teacherLogs = teacherLogs.filter(log => isLogInMonthYear(log.date, filterMonth, filterYear));
+    periodText = `${monthsIndo[filterMonth - 1]} ${filterYear}`;
+  }
+
+  teacherLogs.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  const countHadir = teacherLogs.filter(l => l.status === "Hadir").length;
+  const countSakit = teacherLogs.filter(l => l.status === "Sakit").length;
+  const countIzin = teacherLogs.filter(l => l.status === "Izin").length;
+  const countAlpa = teacherLogs.filter(l => l.status === "Alpa").length;
+  const totalJP = teacherLogs.filter(l => l.status === "Hadir").reduce((sum, l) => sum + Number(l.jp), 0);
+
+  const honorJP = totalJP * Number(teacher.rate);
+  const transport = countHadir * Number(teacher.transport);
+  const totalHonor = honorJP + transport;
+
+  const totalLogsCount = teacherLogs.length;
+  const presencePct = totalLogsCount > 0 ? Math.round((countHadir / totalLogsCount) * 100) : 0;
+
+  if (profileBanner) {
+    profileBanner.style.display = "block";
+    profileBanner.innerHTML = `
+      <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; margin-bottom: 16px; border-bottom: 1px solid var(--card-border); padding-bottom: 14px;">
+        <div style="display: flex; align-items: center; gap: 14px;">
+          <div class="user-avatar" style="width: 52px; height: 52px; font-size: 1.3rem; border-radius: 12px; background: linear-gradient(135deg, var(--primary), var(--secondary)); color: #fff;">
+            ${escapeHTML(teacher.name.substring(0, 2).toUpperCase())}
+          </div>
+          <div>
+            <h3 style="font-size: 1.15rem; font-weight: 700; color: var(--text-primary); margin-bottom: 2px;">
+              ${escapeHTML(teacher.name)}
+            </h3>
+            <div style="font-size: 0.85rem; color: var(--text-secondary); display: flex; gap: 12px; flex-wrap: wrap;">
+              <span><strong>NUPTK/ID:</strong> ${escapeHTML(teacher.id)}</span>
+              <span>•</span>
+              <span><strong>Mapel:</strong> ${escapeHTML(teacher.subject)}</span>
+              <span>•</span>
+              <span><strong>Status:</strong> <span class="badge badge-${teacher.status === 'aktif' ? 'active' : 'inactive'}">${escapeHTML(teacher.status)}</span></span>
+            </div>
+          </div>
+        </div>
+        <div style="text-align: right; font-size: 0.82rem; color: var(--text-muted);">
+          <div>Tarif Honor: <strong>${formatRupiah(teacher.rate)}</strong> / JP</div>
+          <div>Uang Transport: <strong>${formatRupiah(teacher.transport)}</strong> / Hadir</div>
+          <div style="margin-top: 2px; color: var(--primary-color); font-weight: 600;">Periode: ${escapeHTML(periodText)}</div>
+        </div>
+      </div>
+
+      <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px;">
+        <div class="stat-card primary" style="padding: 12px 16px;">
+          <div class="stat-info">
+            <span class="stat-label">Kehadiran (${presencePct}%)</span>
+            <span class="stat-value" style="font-size: 1.3rem;">${countHadir} Hari</span>
+            <span class="stat-desc">Total JP: ${totalJP} JP</span>
+          </div>
+        </div>
+        <div class="stat-card secondary" style="padding: 12px 16px;">
+          <div class="stat-info">
+            <span class="stat-label">Sakit / Izin / Alpa</span>
+            <span class="stat-value" style="font-size: 1.3rem;">${countSakit}S / ${countIzin}I / ${countAlpa}A</span>
+            <span class="stat-desc">Total Ketidakhadiran</span>
+          </div>
+        </div>
+        <div class="stat-card success" style="padding: 12px 16px;">
+          <div class="stat-info">
+            <span class="stat-label">Estimasi Honor Netto</span>
+            <span class="stat-value" style="font-size: 1.3rem;">${formatRupiah(totalHonor)}</span>
+            <span class="stat-desc">Honor JP + Transport</span>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  if (countBadge) {
+    countBadge.textContent = `${teacherLogs.length} Presensi`;
+  }
+
+  tbody.innerHTML = "";
+  if (teacherLogs.length === 0) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="7" class="text-center">
+          <div class="empty-state">
+            <i data-lucide="calendar-x"></i>
+            <p>Tidak ada riwayat presensi ditemukan untuk ${escapeHTML(teacher.name)} pada periode ini.</p>
+          </div>
+        </td>
+      </tr>
+    `;
+    safeCreateIcons();
+    return;
+  }
+
+  teacherLogs.forEach(log => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td class="font-bold">${formatIndonesianDate(log.date)}</td>
+      <td><span class="badge badge-${escapeHTML(log.status).toLowerCase()}">${escapeHTML(log.status)}</span></td>
+      <td>${log.status === 'Hadir' ? log.jp + ' JP' : '-'}</td>
+      <td>${log.status === 'Hadir' ? escapeHTML(log.class || '-') : '-'}</td>
+      <td style="max-width: 250px;">${log.status === 'Hadir' && log.topic ? escapeHTML(log.topic) : '-'}</td>
+      <td>
+        ${log.signature ? `<img src="${escapeHTML(log.signature)}" alt="TTD" class="signature-preview" style="max-height: 28px;">` : '<span class="text-muted" style="font-size: 0.75rem;">-</span>'}
+      </td>
+      <td class="text-right">
+        <div class="actions-cell" style="justify-content: flex-end;">
+          <button class="icon-btn edit" onclick="editLog('${escapeHTML(log.id)}')" title="Edit Presensi">
+            <i data-lucide="edit-3"></i>
+          </button>
+          <button class="icon-btn delete" onclick="deleteLog('${escapeHTML(log.id)}')" title="Hapus Presensi">
+            <i data-lucide="trash-2"></i>
+          </button>
+        </div>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  safeCreateIcons();
+}
+
+window.viewTeacherHistory = function(teacherId) {
+  state.currentTab = "history-guru";
+
+  const links = document.querySelectorAll(".nav-link");
+  const tabs = document.querySelectorAll(".tab-content");
+
+  links.forEach(l => {
+    l.classList.remove("active");
+    if (l.getAttribute("data-tab") === "history-guru") l.classList.add("active");
+  });
+
+  tabs.forEach(t => {
+    t.classList.remove("active");
+    if (t.id === "history-guru") t.classList.add("active");
+  });
+
+  updateHeaderTitle("history-guru");
+
+  renderHistoryGuruTab();
+  const select = document.getElementById("historyGuruSelect");
+  if (select) {
+    select.value = teacherId;
+    updateHistoryGuruView(teacherId);
+  }
+};
+
+function printTeacherHistory() {
+  const select = document.getElementById("historyGuruSelect");
+  const teacherId = select ? select.value : "";
+
+  if (!teacherId) {
+    alert("Harap pilih Guru GTT terlebih dahulu untuk mencetak presensi.");
+    return;
+  }
+
+  const teacher = state.teachers.find(t => String(t.id) === String(teacherId));
+  if (!teacher) return;
+
+  const modeEl = document.getElementById("historyGuruMode");
+  const mode = modeEl ? modeEl.value : "bulanan";
+
+  let teacherLogs = state.attendance.filter(l => String(l.teacherId) === String(teacherId));
+  let periodTitleText = "SEMUA PERIODE";
+
+  if (mode === "harian") {
+    const selectedDate = document.getElementById("historyGuruTanggal").value;
+    teacherLogs = teacherLogs.filter(l => l.date === selectedDate);
+    periodTitleText = `PER TANGGAL : ${formatIndonesianDate(selectedDate).toUpperCase()}`;
+  } else if (mode === "bulanan") {
+    const filterMonth = Number(document.getElementById("historyGuruBulan").value);
+    const filterYear = Number(document.getElementById("historyGuruTahun").value);
+    const monthsIndo = ["JANUARI", "FEBRUARI", "MARET", "APRIL", "MEI", "JUNI", "JULI", "AGUSTUS", "SEPTEMBER", "OKTOBER", "NOVEMBER", "DESEMBER"];
+    teacherLogs = teacherLogs.filter(l => isLogInMonthYear(l.date, filterMonth, filterYear));
+    periodTitleText = `PERIODE : ${monthsIndo[filterMonth - 1]} ${filterYear}`;
+  }
+
+  teacherLogs.sort((a, b) => new Date(a.date) - new Date(b.date));
+
+  const daysIndo = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
+  let tableRowsHtml = "";
+
+  const countHadir = teacherLogs.filter(l => l.status === "Hadir").length;
+  const countSakit = teacherLogs.filter(l => l.status === "Sakit").length;
+  const countIzin = teacherLogs.filter(l => l.status === "Izin").length;
+  const countAlpa = teacherLogs.filter(l => l.status === "Alpa").length;
+  const totalJP = teacherLogs.filter(l => l.status === "Hadir").reduce((sum, l) => sum + Number(l.jp), 0);
+
+  teacherLogs.forEach((log, idx) => {
+    const dParts = log.date.split('-');
+    const dObj = new Date(Number(dParts[0]), Number(dParts[1]) - 1, Number(dParts[2]));
+    const dayName = daysIndo[dObj.getDay()];
+    const formattedDate = `${dayName}, ${dObj.getDate()}.${dObj.getMonth() + 1}.${dObj.getFullYear()}`;
+
+    const sigHtml = log.signature ? `<img src="${escapeHTML(log.signature)}" alt="TTD" style="max-height: 25px;">` : '-';
+
+    tableRowsHtml += `
+      <tr>
+        <td style="text-align: center; width: 30px;">${idx + 1}</td>
+        <td style="width: 140px; font-weight: 500;">${escapeHTML(formattedDate)}</td>
+        <td style="text-align: center; width: 65px;"><strong style="color: ${log.status === 'Hadir' ? '#0d9488' : '#ef4444'};">${escapeHTML(log.status)}</strong></td>
+        <td style="text-align: center; width: 55px;">${log.status === 'Hadir' ? log.jp + ' JP' : '-'}</td>
+        <td style="text-align: center; width: 70px;">${log.status === 'Hadir' ? escapeHTML(log.class || '-') : '-'}</td>
+        <td>${log.status === 'Hadir' && log.topic ? escapeHTML(log.topic) : '-'}</td>
+        <td style="text-align: center; width: 75px;">${sigHtml}</td>
+      </tr>
+    `;
+  });
+
+  if (teacherLogs.length === 0) {
+    tableRowsHtml = `<tr><td colspan="7" style="text-align: center; padding: 20px;">Tidak ada riwayat presensi pada periode ini.</td></tr>`;
+  }
+
+  const container = document.getElementById('printRekapArea');
+  container.innerHTML = `
+    <div class="print-rekap-page">
+      <div class="print-rekap-header">
+        <img src="school-logo.png" class="print-logo" alt="Logo">
+        <div class="print-header-text">
+          <div class="print-yayasan">Yayasan Tri Dharma Tegal</div>
+          <div class="print-school-name">${escapeHTML(state.settings.schoolName)}</div>
+          <div class="print-school-subtitle">( SEKOLAH RAMAH ANAK, TERAKREDITASI "B" )</div>
+          <div class="print-school-address">Alamat: ${escapeHTML(state.settings.schoolAddress)}</div>
+          <div class="print-school-email">Surel: smpthhk.tegal@gmail.com</div>
+        </div>
+      </div>
+      
+      <div class="print-rekap-title" style="margin-top: 14px; margin-bottom: 12px;">
+        <strong style="font-size: 12pt; text-transform: uppercase;">LAPORAN PRESENSI & JURNAL KBM INDIVIDUAL GTT</strong><br>
+        <span style="font-size: 10pt;">${escapeHTML(periodTitleText)}</span>
+      </div>
+
+      <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 12px; margin-bottom: 12px; font-size: 9pt; display: flex; justify-content: space-between;">
+        <div>
+          <div><strong>NUPTK / ID:</strong> ${escapeHTML(teacher.id)}</div>
+          <div><strong>NAMA GTT:</strong> ${escapeHTML(teacher.name)}</div>
+          <div><strong>MAPEL:</strong> ${escapeHTML(teacher.subject)}</div>
+        </div>
+        <div style="text-align: right;">
+          <div><strong>Total Hadir:</strong> ${countHadir} Hari (${totalJP} JP)</div>
+          <div><strong>Sakit/Izin/Alpa:</strong> ${countSakit}S / ${countIzin}I / ${countAlpa}A</div>
+          <div><strong>Tarif per JP:</strong> ${formatRupiah(teacher.rate)}</div>
+        </div>
+      </div>
+
+      <table class="print-rekap-table" style="width: 100%;">
+        <thead>
+          <tr>
+            <th>NO</th>
+            <th>TANGGAL & HARI</th>
+            <th>STATUS</th>
+            <th>JP</th>
+            <th>KELAS</th>
+            <th>URAIAN MATERI / KBM</th>
+            <th>TTD</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${tableRowsHtml}
+        </tbody>
+      </table>
+
+      <div class="slip-signatures" style="margin-top: 30px;">
+        <div class="signature-box">
+          <div>Mengetahui,</div>
+          <div>Kepala Sekolah</div>
+          <div class="signature-space" style="height: 50px;"></div>
+          <div style="font-weight: bold; text-decoration: underline;">${escapeHTML(state.settings.principalName)}</div>
+          <div>NIP: ${escapeHTML(state.settings.principalNip)}</div>
+        </div>
+        <div class="signature-box">
+          <div>Tegal, ${new Date().toLocaleDateString('id-ID', {day: 'numeric', month: 'long', year: 'numeric'})}</div>
+          <div>Guru Bersangkutan</div>
+          <div class="signature-space" style="height: 50px;"></div>
+          <div style="font-weight: bold; text-decoration: underline;">${escapeHTML(teacher.name)}</div>
+          <div>NUPTK: ${escapeHTML(teacher.id)}</div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.body.classList.add('printing-rekap');
+  setTimeout(() => {
+    window.print();
+  }, 200);
+
+  const cleanup = () => {
+    document.body.classList.remove('printing-rekap');
+  };
+  window.addEventListener('afterprint', cleanup, { once: true });
+  setTimeout(cleanup, 5000);
+}
+
+function exportTeacherHistoryCSV() {
+  const select = document.getElementById("historyGuruSelect");
+  const teacherId = select ? select.value : "";
+
+  if (!teacherId) {
+    alert("Harap pilih Guru GTT terlebih dahulu untuk mengekspor CSV.");
+    return;
+  }
+
+  const teacher = state.teachers.find(t => String(t.id) === String(teacherId));
+  if (!teacher) return;
+
+  const modeEl = document.getElementById("historyGuruMode");
+  const mode = modeEl ? modeEl.value : "bulanan";
+
+  let teacherLogs = state.attendance.filter(l => String(l.teacherId) === String(teacherId));
+  let periodLabel = "Semua_Waktu";
+
+  if (mode === "harian") {
+    const selectedDate = document.getElementById("historyGuruTanggal").value;
+    teacherLogs = teacherLogs.filter(l => l.date === selectedDate);
+    periodLabel = selectedDate;
+  } else if (mode === "bulanan") {
+    const filterMonth = Number(document.getElementById("historyGuruBulan").value);
+    const filterYear = Number(document.getElementById("historyGuruTahun").value);
+    teacherLogs = teacherLogs.filter(l => isLogInMonthYear(l.date, filterMonth, filterYear));
+    periodLabel = `${filterYear}_${filterMonth}`;
+  }
+
+  teacherLogs.sort((a, b) => new Date(a.date) - new Date(b.date));
+
+  if (teacherLogs.length === 0) {
+    alert("Tidak ada data presensi untuk diekspor.");
+    return;
+  }
+
+  let csvContent = "data:text/csv;charset=utf-8,";
+  csvContent += "ID Guru,Nama Guru,Mata Pelajaran,Tanggal,Status Kehadiran,Jam Pelajaran (JP),Kelas,Uraian KBM\n";
+
+  teacherLogs.forEach(log => {
+    const row = [
+      `"${log.teacherId}"`,
+      `"${teacher.name.replace(/"/g, '""')}"`,
+      `"${teacher.subject.replace(/"/g, '""')}"`,
+      `"${log.date}"`,
+      `"${log.status}"`,
+      log.status === 'Hadir' ? log.jp : 0,
+      `"${(log.class || '').replace(/"/g, '""')}"`,
+      `"${(log.topic || '').replace(/"/g, '""')}"`
+    ];
+    csvContent += row.join(",") + "\n";
+  });
+
+  const encodedUri = encodeURI(csvContent);
+  const link = document.createElement("a");
+  const filenameStr = teacher.name.replace(/[^a-zA-Z0-9]/g, "_");
+  link.setAttribute("href", encodedUri);
+  link.setAttribute("download", `Histori_Presensi_${filenameStr}_${periodLabel}.csv`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+// ----------------------------------------------------
 // 3. PRESENSI (ATTENDANCE) VIEW FUNCTIONS
 // ----------------------------------------------------
 function renderPresensiForm() {
   const select = document.getElementById("presensiGuru");
+  const adminFilterSelect = document.getElementById("filterPresensiGuruAdmin");
   const isGuru = state.currentUser && state.currentUser.role === "guru";
   
-  const selectedVal = select.value;
-  select.innerHTML = '<option value="">-- Pilih Guru --</option>';
+  const selectedVal = select ? select.value : "";
+  if (select) select.innerHTML = '<option value="">-- Pilih Guru --</option>';
+  
+  if (adminFilterSelect) {
+    const currentAdminFilterVal = adminFilterSelect.value;
+    adminFilterSelect.innerHTML = '<option value="">Semua Guru</option>';
+    const sortedTeachers = [...state.teachers].sort((a, b) => a.name.localeCompare(b.name, 'id'));
+    sortedTeachers.forEach(t => {
+      const opt = document.createElement("option");
+      opt.value = t.id;
+      opt.textContent = t.name;
+      adminFilterSelect.appendChild(opt);
+    });
+    adminFilterSelect.value = currentAdminFilterVal || "";
+  }
   
   if (isGuru) {
     const teacherId = state.currentUser.id;
     const teacher = state.teachers.find(t => String(t.id) === String(teacherId)) || { id: teacherId, name: state.currentUser.name, subject: "-" };
     
-    const opt = document.createElement("option");
-    opt.value = teacher.id;
-    opt.textContent = `${teacher.name} (${teacher.subject})`;
-    select.appendChild(opt);
-    
-    select.value = teacher.id;
-    select.disabled = true; // Lock choice for GTT
+    if (select) {
+      const opt = document.createElement("option");
+      opt.value = teacher.id;
+      opt.textContent = `${teacher.name} (${teacher.subject})`;
+      select.appendChild(opt);
+      
+      select.value = teacher.id;
+      select.disabled = true; // Lock choice for GTT
+    }
   } else {
     const activeTeachers = state.teachers.filter(t => t.status === "aktif");
     
-    activeTeachers.forEach(t => {
-      const opt = document.createElement("option");
-      opt.value = t.id;
-      opt.textContent = `${t.name} (${t.subject})`;
-      select.appendChild(opt);
-    });
-    
-    select.disabled = false;
-    if (selectedVal) select.value = selectedVal;
+    if (select) {
+      activeTeachers.forEach(t => {
+        const opt = document.createElement("option");
+        opt.value = t.id;
+        opt.textContent = `${t.name} (${t.subject})`;
+        select.appendChild(opt);
+      });
+      
+      select.disabled = false;
+      if (selectedVal) select.value = selectedVal;
+    }
   }
 }
 
@@ -1636,6 +2117,8 @@ function renderDetailedLogs() {
   const modeEl = document.getElementById("filterPresensiMode");
   const mode = modeEl ? modeEl.value : "bulanan";
   const isGuru = state.currentUser && state.currentUser.role === "guru";
+  const adminFilterSelect = document.getElementById("filterPresensiGuruAdmin");
+  const selectedAdminGuruId = adminFilterSelect ? adminFilterSelect.value : "";
   
   const monthWrapper = document.getElementById("filterPresensiBulanWrapper");
   const dateWrapper = document.getElementById("filterPresensiTanggalWrapper");
@@ -1665,7 +2148,13 @@ function renderDetailedLogs() {
   }
   
   if (isGuru) {
-    filteredLogs = filteredLogs.filter(log => log.teacherId === state.currentUser.id);
+    filteredLogs = filteredLogs.filter(log => String(log.teacherId) === String(state.currentUser.id));
+  } else if (selectedAdminGuruId) {
+    filteredLogs = filteredLogs.filter(log => String(log.teacherId) === String(selectedAdminGuruId));
+    const selectedTeacherObj = state.teachers.find(t => String(t.id) === String(selectedAdminGuruId));
+    if (selectedTeacherObj) {
+      periodTitleText += ` (${selectedTeacherObj.name})`;
+    }
   }
   
   // Sort logs by date descending (newest first)
@@ -2638,10 +3127,36 @@ function setupEventListeners() {
   const filterTahunEl = document.getElementById("filterPresensiTahun");
   const filterTanggalEl = document.getElementById("filterPresensiTanggal");
   
+  const filterAdminGuruEl = document.getElementById("filterPresensiGuruAdmin");
+  
   if (filterModeEl) filterModeEl.addEventListener("change", renderDetailedLogs);
   if (filterBulanEl) filterBulanEl.addEventListener("change", renderDetailedLogs);
   if (filterTahunEl) filterTahunEl.addEventListener("change", renderDetailedLogs);
   if (filterTanggalEl) filterTanggalEl.addEventListener("change", renderDetailedLogs);
+  if (filterAdminGuruEl) filterAdminGuruEl.addEventListener("change", renderDetailedLogs);
+
+  // Histori Guru Tab Controls Listeners
+  const histGuruSelectEl = document.getElementById("historyGuruSelect");
+  const histGuruModeEl = document.getElementById("historyGuruMode");
+  const histGuruBulanEl = document.getElementById("historyGuruBulan");
+  const histGuruTahunEl = document.getElementById("historyGuruTahun");
+  const histGuruTanggalEl = document.getElementById("historyGuruTanggal");
+  const btnPrintGuruHistEl = document.getElementById("btnPrintGuruHistory");
+  const btnExportGuruHistEl = document.getElementById("btnExportGuruHistoryCSV");
+
+  const onHistoryGuruFilterChange = () => {
+    const selectedId = histGuruSelectEl ? histGuruSelectEl.value : "";
+    updateHistoryGuruView(selectedId);
+  };
+
+  if (histGuruSelectEl) histGuruSelectEl.addEventListener("change", onHistoryGuruFilterChange);
+  if (histGuruModeEl) histGuruModeEl.addEventListener("change", onHistoryGuruFilterChange);
+  if (histGuruBulanEl) histGuruBulanEl.addEventListener("change", onHistoryGuruFilterChange);
+  if (histGuruTahunEl) histGuruTahunEl.addEventListener("change", onHistoryGuruFilterChange);
+  if (histGuruTanggalEl) histGuruTanggalEl.addEventListener("change", onHistoryGuruFilterChange);
+
+  if (btnPrintGuruHistEl) btnPrintGuruHistEl.addEventListener("click", printTeacherHistory);
+  if (btnExportGuruHistEl) btnExportGuruHistEl.addEventListener("click", exportTeacherHistoryCSV);
   
   // Reset Form button
   document.getElementById("btnResetPresensiForm").addEventListener("click", () => {

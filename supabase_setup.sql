@@ -89,7 +89,9 @@ INSERT INTO public.teachers (id, name, subject, rate, transport, status, passwor
 ('198505102018031004', 'Ismadi, S.Pd', 'Fisika', 55000, 25000, 'aktif', 'ismadi510'),
 ('198810052019052005', 'WS. Inggried Budiarti, S.Pd', 'Informatika', 50000, 20000, 'aktif', 'inggried005'),
 ('199606142023022006', 'Yunita Mentari Putri, S. Sn', 'Seni Budaya', 45000, 20000, 'aktif', 'yunita614'),
-('198712252016031007', 'Atmo Kusumo, S.Pd.', 'Penjasorkes', 45000, 20000, 'aktif', 'atmo225')
+('198712252016031007', 'Atmo Kusumo, S.Pd.', 'Penjasorkes', 45000, 20000, 'aktif', 'atmo225'),
+('199307182023031008', 'Maulana Ainun Pratama, S.T', 'IPA', 50000, 20000, 'aktif', 'maulana008'),
+('199504122023032009', 'Nita Apriyatin, S.Pd.', 'Pendidikan Agama Kepercayaan', 50000, 20000, 'aktif', 'nita009')
 ON CONFLICT (id) DO UPDATE SET password = EXCLUDED.password;
 
 -- Data Pengaturan Default
