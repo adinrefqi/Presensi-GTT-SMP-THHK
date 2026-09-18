@@ -129,9 +129,13 @@ begitu di aplikasi. Jangan digabung dalam satu statement SQL, sesinya tidak akan
 
 ## Cara memasang #2 — urutan tidak boleh dibalik
 
-- [ ] 1. Jalankan **BAGIAN 1–6** `supabase_migration_rls_lockdown.sql` di Supabase SQL Editor.
-- [ ] 2. Deploy `app.js` + `index.html` versi baru.
-- [ ] 3. Uji login admin **dan** guru, lalu simpan satu data presensi.
+- [x] 1. Jalankan **BAGIAN 1–6** `supabase_migration_rls_lockdown.sql` di Supabase SQL Editor.
+- [x] 2. Deploy `app.js` + `index.html` versi baru — terpasang di Vercel
+      (`smpthhkpresensi.vercel.app`, dari GitHub). Diverifikasi langsung di browser: ketujuh
+      jalur data memakai RPC, blok debug SW sudah hilang, service worker terdaftar & bertahan,
+      tidak ada error console.
+- [x] 3. Uji login admin **dan** guru, lalu simpan satu data presensi — **semua berhasil**,
+      guru hanya melihat datanya sendiri.
 - [ ] 4. Buka komentar **BAGIAN 7** (pencabutan akses anon) dan jalankan.
 
 Kalau BAGIAN 7 dijalankan sebelum langkah 2, aplikasi langsung berhenti bekerja.
