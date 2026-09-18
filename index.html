@@ -8,25 +8,6 @@
   <title>Presensi GTT SMP THHK</title>
   <!-- SEO & Favicon placeholder -->
   <meta name="description" content="Aplikasi Presensi dan Rekapitulasi Honorarium Guru Tidak Tetap (GTT) SMP THHK">
-  
-  <script>
-    // Force clear old service workers and cache for testing updates
-    if (location.protocol !== 'file:' && 'serviceWorker' in navigator) {
-      navigator.serviceWorker.getRegistrations().then(registrations => {
-        for (let registration of registrations) {
-          registration.unregister();
-        }
-      });
-    }
-    if ('caches' in window) {
-      caches.keys().then(names => {
-        for (let name of names) {
-          caches.delete(name);
-        }
-      });
-    }
-  </script>
-  
   <!-- Stylesheets -->
   <link rel="stylesheet" href="style.css">
   

@@ -135,6 +135,21 @@ let state = {
   currentUser: null
 };
 
+// SECURITY: Token sesi diterbitkan server (tabel app_sessions) saat login.
+// Semua RPC baca/tulis data memerlukannya — anon tidak punya akses tabel langsung.
+function getSessionToken() {
+  return sessionStorage.getItem("gtt_token") || null;
+}
+
+function setSessionToken(token) {
+  if (token) sessionStorage.setItem("gtt_token", token);
+  else sessionStorage.removeItem("gtt_token");
+}
+
+function isSessionError(err) {
+  return String((err && (err.message || err.hint)) || err).includes("SESSION_INVALID");
+}
+
 // SUPABASE CONFIGURATION
 // Supabase JS expects the project base URL, not the REST endpoint URL.
 const SUPABASE_URL = "https://ckhkummpclhlfofhkddi.supabase.co";
@@ -321,38 +336,37 @@ async function loadData() {
     loadDataFromStorage();
     return;
   }
-  
+
+  // SECURITY: data hanya bisa diambil dengan token sesi, jadi tidak ada
+  // pengambilan data sebelum login. Tanpa sesi, biarkan state kosong.
+  if (!getSessionToken()) {
+    // Sesi lama dari versi sebelum token, atau token sudah dihapus:
+    // paksa login ulang supaya tidak masuk aplikasi dengan data kosong.
+    state.currentUser = null;
+    sessionStorage.removeItem("gtt_session");
+    return;
+  }
+
+  if (!state.currentUser) return;
+
+  await fetchDataFromSupabase();
+}
+
+// Ambil seluruh data yang boleh dilihat user ini lewat satu RPC.
+// Server yang memfilter: admin dapat semua, guru hanya datanya sendiri.
+async function fetchDataFromSupabase() {
   try {
-    // Fetch independent datasets in parallel so a slow request does not block the others.
-    const [settingsResult, teachersResult, attendanceResult] = await Promise.all([
-      runSupabaseRequest(
-        () => supabaseClient
-          .from("settings")
-          .select("*")
-          .limit(1)
-          .maybeSingle(),
-        "Gagal mengambil pengaturan sekolah"
-      ),
-      runSupabaseRequest(
-        () => supabaseClient
-          .from("teachers")
-          .select("*")
-          .order("name", { ascending: true }),
-        "Gagal mengambil data guru"
-      ),
-      runSupabaseRequest(
-        () => supabaseClient
-          .from("attendance")
-          .select("*"),
-        "Gagal mengambil data presensi"
-      )
-    ]);
+    const { data } = await runSupabaseRequest(
+      () => supabaseClient.rpc("app_bootstrap", { p_token: getSessionToken() }),
+      "Gagal mengambil data aplikasi"
+    );
 
-    const settingsData = settingsResult.data;
-    const teachersData = teachersResult.data;
-    const attendanceData = attendanceResult.data;
+    const payload = data || {};
+    const settingsData = payload.settings;
+    const teachersData = payload.teachers || [];
+    const attendanceData = payload.attendance || [];
 
-    if (settingsData) {
+    if (settingsData && settingsData.school_name) {
       state.settings = {
         schoolName: settingsData.school_name,
         schoolAddress: settingsData.school_address,
@@ -362,39 +376,37 @@ async function loadData() {
         treasurerNip: settingsData.treasurer_nip
       };
     }
-    
-    if (teachersData) {
-      if (teachersData.length === 0) {
-        console.log("Tabel guru di Supabase kosong. Mengunggah data guru default otomatis...");
-        await loadSampleData(false);
-      } else {
-        state.teachers = teachersData.map((t, idx) => ({
-          id: t.id,
-          name: t.name,
-          subject: t.subject,
-          rate: Number(t.rate),
-          transport: Number(t.transport),
-          status: t.status,
-          password: undefined // SECURITY: password tidak pernah disimpan di client state
-        }));
-      }
-    }
-    
-    if (attendanceData) {
-      state.attendance = attendanceData.map(a => ({
-        id: a.id,
-        teacherId: a.teacher_id,
-        date: a.date,
-        status: a.status,
-        jp: Number(a.jp),
-        class: a.class,
-        topic: a.topic,
-        signature: a.signature || ''
-      }));
-    }
-    
+
+    state.teachers = teachersData.map(t => ({
+      id: t.id,
+      name: t.name,
+      subject: t.subject,
+      rate: Number(t.rate),
+      transport: Number(t.transport),
+      status: t.status
+      // SECURITY: password tidak pernah dikirim server ke client
+    }));
+
+    state.attendance = attendanceData.map(a => ({
+      id: a.id,
+      teacherId: a.teacher_id,
+      date: a.date,
+      status: a.status,
+      jp: Number(a.jp),
+      class: a.class,
+      topic: a.topic,
+      signature: a.signature || ''
+    }));
+
     sanitizeTeachersState();
+    saveData();
   } catch (err) {
+    if (isSessionError(err)) {
+      alert("Sesi Anda sudah berakhir. Silakan login kembali.");
+      logout();
+      return;
+    }
+
     console.error("Gagal mengambil data dari Supabase:", {
       message: err.message,
       code: err.code,
@@ -690,43 +702,28 @@ function initDateDisplay() {
 // HELPER FOR RESILIENT TEACHER SAVING TO SUPABASE
 async function saveTeacherSupabase(t) {
   if (!isSupabaseConfigured()) return;
-  const teacherPayload = {
-    id: t.id,
-    name: t.name,
-    subject: t.subject,
-    rate: t.rate,
-    transport: t.transport,
-    status: t.status
-  };
 
-  if (t.password && t.password.trim() !== "") {
-    teacherPayload.password = t.password.trim();
-  }
-
-  const { error: rpcErr } = await supabaseClient.rpc('upsert_teacher_with_hash', {
-    p_id: t.id,
-    p_name: t.name,
-    p_subject: t.subject,
-    p_rate: t.rate,
-    p_transport: t.transport,
-    p_status: t.status,
-    p_password: t.password || ""
-  });
-
-  if (rpcErr) {
-    const errStr = String(rpcErr.message || rpcErr.details || JSON.stringify(rpcErr)).toLowerCase();
-    if (rpcErr.code === 'PGRST202' || errStr.includes("could not find the function") || errStr.includes("schema cache")) {
-      console.warn("RPC upsert_teacher_with_hash tidak ditemukan di Supabase schema cache. Menjalankan fallback direct table upsert...");
-      const { error: tableErr } = await supabaseClient.from("teachers").upsert(teacherPayload);
-      if (tableErr) throw tableErr;
-    } else {
-      throw rpcErr;
-    }
-  }
+  await runSupabaseRequest(
+    () => supabaseClient.rpc('app_save_teacher', {
+      p_token: getSessionToken(),
+      p_id: t.id,
+      p_name: t.name,
+      p_subject: t.subject,
+      p_rate: t.rate,
+      p_transport: t.transport,
+      p_status: t.status,
+      p_password: t.password || ""
+    }),
+    "Gagal menyimpan data guru",
+    1
+  );
 }
 
 // SAMPLE DATA GENERATOR
-async function loadSampleData(showAlert = true) {
+// pushToServer HANYA true jika admin menekan tombol "Muat Data Demo".
+// Jalur otomatis (mis. fallback offline) tidak boleh menulis ke database,
+// karena operasi ini mengosongkan tabel guru & presensi lebih dulu.
+async function loadSampleData(showAlert = true, pushToServer = false) {
   // Demo Teachers (Unique passwords assigned to each teacher)
   const sampleTeachers = [
     { id: "199003122022031001", name: "Anom Kudho Winanto, S.Sn.", subject: "Seni Budaya", rate: 50000, transport: 20000, status: "aktif", password: "anom312" },
@@ -812,29 +809,37 @@ async function loadSampleData(showAlert = true) {
   
   showLoadingOverlay(true);
   try {
-    if (isSupabaseConfigured()) {
-      // Clear existing first
-      await supabaseClient.from("attendance").delete().neq("id", "");
-      await supabaseClient.from("teachers").delete().neq("id", "");
-      
-      // Insert teachers via RPC (dengan fallback ke direct table upsert jika RPC belum di-install)
+    if (isSupabaseConfigured() && pushToServer) {
+      // Kosongkan guru & presensi (pengaturan sekolah dipertahankan). Admin only.
+      await runSupabaseRequest(
+        () => supabaseClient.rpc('app_reset_data', {
+          p_token: getSessionToken(),
+          p_reset_settings: false
+        }),
+        "Gagal mengosongkan data lama",
+        1
+      );
+
       for (const t of sampleTeachers) {
         await saveTeacherSupabase(t);
       }
-      
-      // Insert attendance in chunks/full list
-      const { error: aErr } = await supabaseClient.from("attendance").insert(
-        sampleAttendance.map(a => ({
-          id: a.id,
-          teacher_id: a.teacherId,
-          date: a.date,
-          status: a.status,
-          jp: a.jp,
-          class: a.class,
-          topic: a.topic
-        }))
+
+      await runSupabaseRequest(
+        () => supabaseClient.rpc('app_bulk_insert_attendance', {
+          p_token: getSessionToken(),
+          p_rows: sampleAttendance.map(a => ({
+            id: a.id,
+            teacher_id: a.teacherId,
+            date: a.date,
+            status: a.status,
+            jp: a.jp,
+            class: a.class,
+            topic: a.topic
+          }))
+        }),
+        "Gagal mengunggah data presensi sampel",
+        1
       );
-      if (aErr) throw aErr;
     }
     
     state.teachers = sampleTeachers;
@@ -862,46 +867,38 @@ async function checkTeacherCredentials(usernameInput, passwordInput) {
   const password = passwordInput.trim();
   
   if (isSupabaseConfigured()) {
-    try {
-      // SECURITY: Gunakan RPC agar password diverifikasi di server-side (hashed)
-      const { data: matchedTeachers } = await runSupabaseRequest(
-        () => supabaseClient.rpc('verify_teacher_login', {
-          input_password: password
-        }),
-        "Gagal verifikasi password guru"
-      );
+    // SECURITY: nama depan + password dicocokkan seluruhnya di server, lalu
+    // server menerbitkan token sesi untuk guru yang bersangkutan.
+    // Input yang diketik guru tidak berubah sama sekali.
+    const { data } = await runSupabaseRequest(
+      () => supabaseClient.rpc('verify_teacher_login', {
+        input_username: username,
+        input_password: password
+      }),
+      "Gagal verifikasi login guru",
+      1
+    );
 
-      if (matchedTeachers && matchedTeachers.length > 0) {
-        const teacher = matchedTeachers.find(t => {
-          const parts = t.name.split(/\s+/);
-          const firstWord = parts[0].replace(/[^a-zA-Z]/g, "").toLowerCase();
-          if (firstWord === "ws") {
-            const secondWord = parts[1] ? parts[1].replace(/[^a-zA-Z]/g, "").toLowerCase() : "";
-            return username === "ws" || username === secondWord;
-          }
-          return username === firstWord;
-        });
-        if (teacher) return teacher;
-      }
-    } catch (err) {
-      console.warn("Pemeriksaan password online gagal, mencoba pemeriksaan lokal:", err);
-    }
+    const row = data && data[0];
+    return row ? { teacher: row, token: row.token } : null;
   }
-  
-  // Fallback lokal: hanya cocokkan nama (password tidak tersedia di client)
-  return state.teachers.find(teacher => {
-    if (teacher.status !== "aktif") return false;
-    
-    const parts = teacher.name.split(/\s+/);
+
+  // Mode lokal (Supabase tidak dikonfigurasi): password tidak dapat diverifikasi.
+  const teacher = state.teachers.find(t => {
+    if (t.status !== "aktif") return false;
+
+    const parts = t.name.split(/\s+/);
     const firstWord = parts[0].replace(/[^a-zA-Z]/g, "").toLowerCase();
-    
+
     if (firstWord === "ws") {
       const secondWord = parts[1] ? parts[1].replace(/[^a-zA-Z]/g, "").toLowerCase() : "";
       return username === "ws" || username === secondWord;
     }
-    
+
     return username === firstWord;
   });
+
+  return teacher ? { teacher, token: null } : null;
 }
 
 async function login(usernameInput, passwordInput) {
@@ -923,39 +920,24 @@ async function login(usernameInput, passwordInput) {
   showLoadingOverlay(true);
   
   try {
-    // 1. Check Supabase Admins via RPC (hashed password dengan fallback direct check jika RPC ambigu/missing)
+    // 1. Check Supabase Admins via RPC (password di-hash & diverifikasi server-side)
     if (isSupabaseConfigured()) {
-      let adminRows = null;
-      try {
-        const res = await supabaseClient.rpc('verify_admin_login', {
+      const { data: adminRows } = await runSupabaseRequest(
+        () => supabaseClient.rpc('verify_admin_login', {
           input_username: username,
           input_password: password
-        });
-        if (res.data) adminRows = res.data;
-      } catch (adminRpcErr) {
-        console.warn("RPC verify_admin_login error, mencoba direct table fallback:", adminRpcErr);
-        try {
-          const { data: directAdmins } = await supabaseClient
-            .from("admins")
-            .select("username, name, password")
-            .eq("username", username);
-          if (directAdmins && directAdmins.length > 0) {
-            const adm = directAdmins[0];
-            if (adm.password === password) {
-              adminRows = [{ username: adm.username, name: adm.name }];
-            }
-          }
-        } catch (directErr) {
-          console.warn("Direct admin fallback juga tidak berhasil:", directErr);
-        }
-      }
-      
+        }),
+        "Gagal verifikasi login admin",
+        1
+      );
+
       if (adminRows && adminRows.length > 0) {
         const adminData = adminRows[0];
+        setSessionToken(adminData.token);
         state.currentUser = { role: "admin", name: adminData.name, id: adminData.username };
         sessionStorage.setItem("gtt_session", JSON.stringify(state.currentUser));
         loginAttempts = 0; // Reset counter on success
-        onLoginSuccess();
+        await onLoginSuccess();
         return;
       }
     } else {
@@ -964,7 +946,7 @@ async function login(usernameInput, passwordInput) {
         state.currentUser = { role: "admin", name: "Admin THHK", id: "admin" };
         sessionStorage.setItem("gtt_session", JSON.stringify(state.currentUser));
         loginAttempts = 0;
-        onLoginSuccess();
+        await onLoginSuccess();
         return;
       }
       
@@ -972,18 +954,19 @@ async function login(usernameInput, passwordInput) {
         state.currentUser = { role: "admin", name: "Elsa Angreani, S.T", id: "elsa" };
         sessionStorage.setItem("gtt_session", JSON.stringify(state.currentUser));
         loginAttempts = 0;
-        onLoginSuccess();
+        await onLoginSuccess();
         return;
       }
     }
-    
+
     // 2. Check Teacher via RPC
-    const teacher = await checkTeacherCredentials(usernameInput, passwordInput);
-    if (teacher) {
-      state.currentUser = { role: "guru", name: teacher.name, id: teacher.id };
+    const result = await checkTeacherCredentials(usernameInput, passwordInput);
+    if (result) {
+      setSessionToken(result.token);
+      state.currentUser = { role: "guru", name: result.teacher.name, id: result.teacher.id };
       sessionStorage.setItem("gtt_session", JSON.stringify(state.currentUser));
       loginAttempts = 0; // Reset counter on success
-      onLoginSuccess();
+      await onLoginSuccess();
       return;
     }
     
@@ -1013,10 +996,15 @@ async function login(usernameInput, passwordInput) {
   }
 }
 
-function onLoginSuccess() {
+async function onLoginSuccess() {
   document.getElementById("loginScreen").style.display = "none";
   document.getElementById("appMain").style.display = "flex";
-  
+
+  // Data baru bisa diambil setelah token sesi ada.
+  if (isSupabaseConfigured() && getSessionToken()) {
+    await fetchDataFromSupabase();
+  }
+
   sanitizeTeachersState();
   saveData();
   applyRoleConstraints();
@@ -1024,6 +1012,13 @@ function onLoginSuccess() {
 }
 
 function logout() {
+  const token = getSessionToken();
+  if (token && isSupabaseConfigured()) {
+    // Hapus sesi di server; kegagalan tidak boleh menghalangi logout.
+    Promise.resolve(supabaseClient.rpc('app_logout', { p_token: token })).catch(() => {});
+  }
+  setSessionToken(null);
+
   state.currentUser = null;
   sessionStorage.removeItem("gtt_session");
   
@@ -1591,13 +1586,16 @@ window.deleteTeacher = async function(id) {
     showLoadingOverlay(true);
     try {
       if (isSupabaseConfigured()) {
-        const { error } = await supabaseClient
-          .from("teachers")
-          .delete()
-          .eq("id", id);
-        if (error) throw error;
+        await runSupabaseRequest(
+          () => supabaseClient.rpc('app_delete_teacher', {
+            p_token: getSessionToken(),
+            p_id: id
+          }),
+          "Gagal menghapus data guru",
+          1
+        );
       }
-      
+
       // Remove teacher
       state.teachers = state.teachers.filter(t => t.id !== id);
       // Remove related attendance logs
@@ -2258,13 +2256,16 @@ window.deleteLog = async function(id) {
     showLoadingOverlay(true);
     try {
       if (isSupabaseConfigured()) {
-        const { error } = await supabaseClient
-          .from("attendance")
-          .delete()
-          .eq("id", id);
-        if (error) throw error;
+        await runSupabaseRequest(
+          () => supabaseClient.rpc('app_delete_attendance', {
+            p_token: getSessionToken(),
+            p_id: id
+          }),
+          "Gagal menghapus catatan presensi",
+          1
+        );
       }
-      
+
       state.attendance = state.attendance.filter(log => log.id !== id);
       saveData();
       renderAllViews();
@@ -2921,16 +2922,14 @@ async function resetAllData() {
     showLoadingOverlay(true);
     try {
       if (isSupabaseConfigured()) {
-        await supabaseClient.from("attendance").delete().neq("id", "");
-        await supabaseClient.from("teachers").delete().neq("id", "");
-        await supabaseClient.from("settings").update({
-          school_name: "SMP THHK Tegal",
-          school_address: "Jl. Dr. Sutomo No.50, Kota Tegal",
-          principal_name: "Haryanto, S.Pd., M.M.",
-          principal_nip: "19740512 199903 1 002",
-          treasurer_name: "Siti Rahmawati, A.Md.",
-          treasurer_nip: "-"
-        }).not("school_name", "is", null);
+        await runSupabaseRequest(
+          () => supabaseClient.rpc('app_reset_data', {
+            p_token: getSessionToken(),
+            p_reset_settings: true
+          }),
+          "Gagal mereset data",
+          1
+        );
       }
       
       state.teachers = [];
@@ -3170,31 +3169,24 @@ function setupEventListeners() {
   
 async function saveAttendanceToSupabase(payload, isUpdate = false, logId = null) {
   if (!isSupabaseConfigured()) return;
-  
-  let res;
-  if (isUpdate) {
-    res = await supabaseClient.from("attendance").update(payload).eq("id", logId);
-  } else {
-    res = await supabaseClient.from("attendance").insert(payload);
-  }
-  
-  if (res.error) {
-    const errStr = String(res.error.message || res.error.details || JSON.stringify(res.error)).toLowerCase();
-    // Fallback: If signature column does not exist in Supabase schema yet
-    if (payload.signature && (errStr.includes("signature") || errStr.includes("schema cache"))) {
-      console.warn("Kolom 'signature' belum ada di Supabase. Menyimpan data presensi tanpa signature ke Supabase...");
-      delete payload.signature;
-      if (isUpdate) {
-        const retryRes = await supabaseClient.from("attendance").update(payload).eq("id", logId);
-        if (retryRes.error) throw retryRes.error;
-      } else {
-        const retryRes = await supabaseClient.from("attendance").insert(payload);
-        if (retryRes.error) throw retryRes.error;
-      }
-    } else {
-      throw res.error;
-    }
-  }
+
+  // Server memeriksa peran: guru hanya boleh menulis presensi dirinya sendiri.
+  await runSupabaseRequest(
+    () => supabaseClient.rpc('app_save_attendance', {
+      p_token: getSessionToken(),
+      p_id: isUpdate ? logId : payload.id,
+      p_teacher_id: payload.teacher_id,
+      p_date: payload.date,
+      p_status: payload.status,
+      p_jp: payload.jp,
+      p_class: payload.class,
+      p_topic: payload.topic,
+      p_signature: payload.signature || null,
+      p_is_update: isUpdate
+    }),
+    "Gagal menyimpan presensi",
+    1
+  );
 }
 
   // Save log
@@ -3337,28 +3329,19 @@ async function saveAttendanceToSupabase(payload, isUpdate = false, logId = null)
     showLoadingOverlay(true);
     try {
       if (isSupabaseConfigured()) {
-        try {
-          const settingsPayload = {
-            school_name: schName,
-            school_address: schAddress,
-            principal_name: prName,
-            principal_nip: prNip,
-            treasurer_name: trName,
-            treasurer_nip: trNip
-          };
-
-          const { data: updatedRows, error: updErr } = await supabaseClient
-            .from("settings")
-            .update(settingsPayload)
-            .not("school_name", "is", null)
-            .select();
-
-          if (updErr || !updatedRows || updatedRows.length === 0) {
-            await supabaseClient.from("settings").insert({ id: 1, ...settingsPayload });
-          }
-        } catch (spErr) {
-          console.warn("Gagal memperbarui pengaturan ke Supabase online, menyimpan secara lokal:", spErr);
-        }
+        await runSupabaseRequest(
+          () => supabaseClient.rpc('app_save_settings', {
+            p_token: getSessionToken(),
+            p_school_name: schName,
+            p_school_address: schAddress,
+            p_principal_name: prName,
+            p_principal_nip: prNip,
+            p_treasurer_name: trName,
+            p_treasurer_nip: trNip
+          }),
+          "Gagal menyimpan pengaturan sekolah",
+          1
+        );
       }
       
       state.settings.schoolName = schName;
@@ -3387,7 +3370,7 @@ async function saveAttendanceToSupabase(payload, isUpdate = false, logId = null)
   document.getElementById("btnClearSignature").addEventListener("click", () => {
     if (signaturePadInstance) signaturePadInstance.clear();
   });
-  document.getElementById("btnLoadDemoData").addEventListener("click", () => loadSampleData(true));
+  document.getElementById("btnLoadDemoData").addEventListener("click", () => loadSampleData(true, true));
   document.getElementById("btnResetAllData").addEventListener("click", resetAllData);
   
   // --- Authentication Form Handlers ---
