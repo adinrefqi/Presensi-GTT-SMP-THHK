@@ -35,14 +35,14 @@ ALTER TABLE public.app_sessions ENABLE ROW LEVEL SECURITY;
 -- Ambil sesi yang masih berlaku. NULL jika token salah / kedaluwarsa.
 CREATE OR REPLACE FUNCTION public._app_session(p_token UUID)
 RETURNS public.app_sessions
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public, extensions AS $$
   SELECT * FROM public.app_sessions WHERE token = p_token AND expires_at > now();
 $$;
 
 -- Sesi yang valid, atau error kalau tidak.
 CREATE OR REPLACE FUNCTION public._app_require(p_token UUID, p_role TEXT DEFAULT NULL)
 RETURNS public.app_sessions
-LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public, extensions AS $$
 DECLARE s public.app_sessions;
 BEGIN
   s := public._app_session(p_token);
@@ -66,7 +66,7 @@ DROP FUNCTION IF EXISTS public.verify_teacher_login(text, text);
 
 CREATE OR REPLACE FUNCTION public.verify_admin_login(input_username TEXT, input_password TEXT)
 RETURNS TABLE(username VARCHAR, name VARCHAR, token UUID)
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, extensions AS $$
 DECLARE a public.admins;
         t UUID;
 BEGIN
@@ -74,7 +74,7 @@ BEGIN
 
   SELECT * INTO a FROM public.admins adm
    WHERE adm.username = lower(trim(input_username))
-     AND adm.password = crypt(input_password, adm.password);
+     AND adm.password = crypt(input_password, adm.password::text);
 
   IF a.username IS NULL THEN RETURN; END IF;
 
@@ -90,7 +90,7 @@ $$;
 -- token sesi diterbitkan untuk guru yang benar.
 CREATE OR REPLACE FUNCTION public.verify_teacher_login(input_username TEXT, input_password TEXT)
 RETURNS TABLE(id VARCHAR, name VARCHAR, subject VARCHAR, rate NUMERIC, transport NUMERIC, status VARCHAR, token UUID)
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, extensions AS $$
 DECLARE tc public.teachers;
         u  TEXT := lower(trim(input_username));
         w  TEXT[];
@@ -103,7 +103,7 @@ BEGIN
   FOR tc IN
     SELECT * FROM public.teachers t
      WHERE t.status = 'aktif'
-       AND t.password = crypt(input_password, t.password)
+       AND t.password = crypt(input_password, t.password::text)
   LOOP
     w  := regexp_split_to_array(trim(tc.name), '\s+');
     w1 := lower(regexp_replace(COALESCE(w[1], ''), '[^a-zA-Z]', '', 'g'));
@@ -122,7 +122,7 @@ $$;
 
 CREATE OR REPLACE FUNCTION public.app_logout(p_token UUID)
 RETURNS VOID
-LANGUAGE sql SECURITY DEFINER SET search_path = public AS $$
+LANGUAGE sql SECURITY DEFINER SET search_path = public, extensions AS $$
   DELETE FROM public.app_sessions WHERE token = p_token;
 $$;
 
@@ -132,7 +132,7 @@ $$;
 
 CREATE OR REPLACE FUNCTION public.app_bootstrap(p_token UUID)
 RETURNS JSONB
-LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public, extensions AS $$
 DECLARE s public.app_sessions;
         v_teachers JSONB;
         v_attendance JSONB;
@@ -183,7 +183,7 @@ CREATE OR REPLACE FUNCTION public.app_save_attendance(
   p_is_update  BOOLEAN DEFAULT false
 )
 RETURNS VOID
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, extensions AS $$
 DECLARE s public.app_sessions;
         owner_id TEXT;
 BEGIN
@@ -221,7 +221,7 @@ $$;
 
 CREATE OR REPLACE FUNCTION public.app_delete_attendance(p_token UUID, p_id TEXT)
 RETURNS VOID
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, extensions AS $$
 DECLARE s public.app_sessions;
         owner_id TEXT;
 BEGIN
@@ -241,7 +241,7 @@ $$;
 -- Dipakai tombol "Muat Data Demo" (admin saja).
 CREATE OR REPLACE FUNCTION public.app_bulk_insert_attendance(p_token UUID, p_rows JSONB)
 RETURNS VOID
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, extensions AS $$
 BEGIN
   PERFORM public._app_require(p_token, 'admin');
 
@@ -267,7 +267,7 @@ CREATE OR REPLACE FUNCTION public.app_save_teacher(
   p_password  VARCHAR DEFAULT ''
 )
 RETURNS VOID
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, extensions AS $$
 BEGIN
   PERFORM public._app_require(p_token, 'admin');
   PERFORM public.upsert_teacher_with_hash(p_id, p_name, p_subject, p_rate, p_transport, p_status, p_password);
@@ -276,7 +276,7 @@ $$;
 
 CREATE OR REPLACE FUNCTION public.app_delete_teacher(p_token UUID, p_id VARCHAR)
 RETURNS VOID
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, extensions AS $$
 BEGIN
   PERFORM public._app_require(p_token, 'admin');
   DELETE FROM public.teachers WHERE id = p_id;  -- attendance ikut terhapus (ON DELETE CASCADE)
@@ -293,7 +293,7 @@ CREATE OR REPLACE FUNCTION public.app_save_settings(
   p_treasurer_nip  VARCHAR
 )
 RETURNS VOID
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, extensions AS $$
 BEGIN
   PERFORM public._app_require(p_token, 'admin');
 
@@ -312,7 +312,7 @@ $$;
 -- p_wipe_teachers = false dipakai saat memuat data demo (guru ditulis ulang setelahnya).
 CREATE OR REPLACE FUNCTION public.app_reset_data(p_token UUID, p_reset_settings BOOLEAN DEFAULT true)
 RETURNS VOID
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, extensions AS $$
 BEGIN
   PERFORM public._app_require(p_token, 'admin');
 

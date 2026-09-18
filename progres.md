@@ -92,9 +92,38 @@ Token disimpan di `sessionStorage`; sesi kedaluwarsa memicu logout otomatis.
 Yang belum diuji: perilaku runtime fungsi-fungsi itu terhadap data nyata — baru terbukti
 saat login pertama setelah dipasang.
 
-**Bug yang sudah diperbaiki saat pemasangan:** `RAISE ... USING HINT = 'teks %', arg` ditolak
-Postgres (`42601: unrecognized RAISE statement option`) — daftar argumen `%` hanya untuk string
-format utama `RAISE`, bukan untuk ekspresi di `USING`. Diganti `format('... %s.', p_role)`.
+**Bug yang sudah diperbaiki saat pemasangan:**
+
+1. `42601: unrecognized RAISE statement option` — `RAISE ... USING HINT = 'teks %', arg` ditolak
+   Postgres. Daftar argumen `%` hanya untuk string format utama `RAISE`, bukan untuk ekspresi
+   di `USING`. Diganti `format('... %s.', p_role)`.
+2. `42883: function crypt(text, character varying) does not exist` — di Supabase, pgcrypto
+   terpasang di schema **`extensions`**, bukan `public`. Pengetatan `SET search_path = public`
+   membuat `crypt()` dan `gen_salt()` tidak terlihat. Fungsi lama tidak kena karena tidak punya
+   `SET search_path` sama sekali. Diperbaiki jadi `SET search_path = public, extensions` di
+   ke-13 fungsi, plus cast `::text` pada argumen kedua `crypt()`.
+
+   Catatan: ini juga berlaku untuk `app_save_teacher`, yang memanggil `upsert_teacher_with_hash`.
+   Fungsi lama itu tidak punya `SET search_path` sendiri, jadi mewarisi milik pemanggil —
+   tanpa `extensions` ia ikut gagal.
+
+**Uji runtime (data bcrypt asli, database lain):**
+
+| Kasus | Hasil |
+|---|---|
+| Login admin, password benar / salah | 1 sesi / 0 sesi |
+| Login guru `ismadi` password benar / salah | 1 sesi / 0 sesi |
+| Login `ws` dan `inggried` untuk "WS. Inggried" | keduanya 1 sesi |
+| Login `inggried` pakai password guru lain | 0 sesi |
+| `app_bootstrap` sebagai admin | 2 guru, 3 presensi |
+| `app_bootstrap` sebagai guru Ismadi | 1 guru (dirinya), 2 presensi (miliknya) |
+| Guru menyimpan presensi sendiri | tersimpan |
+
+Semua objek uji sudah dihapus setelahnya.
+
+**Catatan `STABLE`:** `app_bootstrap` dan `_app_require` berlabel `STABLE`, jadi memakai snapshot
+awal statement. Login dan pengambilan data **harus berupa dua request terpisah** — dan memang
+begitu di aplikasi. Jangan digabung dalam satu statement SQL, sesinya tidak akan terlihat.
 
 ---
 
