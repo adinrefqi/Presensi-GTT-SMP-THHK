@@ -35,14 +35,50 @@ total     = honorJP + transport
 
 | # | Temuan | Status |
 |---|---|---|
+| 0 | **Semua password asli ada di repo GitHub publik** | **Terbuka — prioritas tertinggi** |
 | 1 | Login guru cuma password, pencocokan nama di browser | **Tidak diubah** (keputusan pemilik) |
-| 2 | RLS `USING (true)` — anon bisa baca/tulis/hapus semua tabel | **Selesai (kode)** — tinggal dipasang |
+| 2 | RLS `USING (true)` — anon bisa baca/tulis/hapus semua tabel | **Selesai** — BAGIAN 7 menyusul |
 | 3 | Hash password terkirim ke browser | **Selesai** |
 | 4 | Service worker di-unregister tiap load | **Selesai** |
 | 5 | Kredensial admin hardcode di `app.js` | Terbuka |
-| 6 | `login()` tanpa timeout/retry, blok fallback dead code | Sebagian selesai lewat #2 |
-| 7 | Rumus gaji diduplikasi di 4 tempat | Terbuka |
-| 8 | `git log` tidak terbaca (`dubious ownership`) | Terbuka |
+| 6 | `login()` tanpa timeout/retry, blok fallback dead code | **Selesai** lewat #2, sisanya di #5 |
+| 7 | Rumus gaji diduplikasi di 5 tempat | Terbuka |
+| 8 | `git log` tidak terbaca (`dubious ownership`) | **Selesai** |
+
+---
+
+## #0 — Semua password asli ada di repo GitHub publik
+
+Ditemukan 18 September 2026, setelah #2 terpasang. **Ini yang paling berisiko sekarang.**
+
+`https://github.com/adinrefqi/Presensi-GTT-SMP-THHK` berstatus **publik** (diverifikasi).
+`supabase_setup.sql` di dalamnya memuat password asli dalam teks polos:
+
+- Admin (`admin` dan `elsa`): `admin1122`
+- Kesembilan guru: `anom312`, `brigita815`, `fransiska112`, `ismadi510`, `inggried005`,
+  `yunita614`, `atmo225`, `maulana008`, `nita009`
+
+Sejak #2 terpasang, password guru adalah **satu-satunya** hal yang melindungi data — kunci
+pintunya sudah bagus, tapi kuncinya terpasang di papan pengumuman.
+
+**Menghapus file dari repo tidak menyelesaikan apa pun**: password itu sudah tercatat di riwayat
+commit dan tetap terbaca. Yang menyelesaikan hanya mengganti seluruh password.
+
+**Cara mengganti — tidak perlu kode baru:**
+
+1. Guru: tab **Guru** → Edit tiap guru → tombol 🎲 di sebelah kolom password menghasilkan
+   password acak → Simpan. `app_save_teacher` sudah meng-hash otomatis. Catat, lalu sampaikan
+   ke guru yang bersangkutan.
+2. Admin: jalankan di Supabase SQL Editor (jangan disimpan ke repo):
+   ```sql
+   SELECT public.update_admin_password('admin', '<password baru>');
+   SELECT public.update_admin_password('elsa',  '<password baru>');
+   ```
+3. Sesudah semua diganti, sunting `supabase_setup.sql` dan `supabase_migration_security.sql`
+   agar memakai placeholder, bukan password asli — supaya tidak terulang.
+
+Pertimbangkan juga menjadikan repo privat, meski itu tidak menggantikan langkah penggantian
+password di atas.
 
 ---
 
@@ -136,7 +172,11 @@ begitu di aplikasi. Jangan digabung dalam satu statement SQL, sesinya tidak akan
       tidak ada error console.
 - [x] 3. Uji login admin **dan** guru, lalu simpan satu data presensi — **semua berhasil**,
       guru hanya melihat datanya sendiri.
-- [ ] 4. Buka komentar **BAGIAN 7** (pencabutan akses anon) dan jalankan.
+- [ ] 4. Buka komentar **BAGIAN 7** (pencabutan akses anon) dan jalankan. ← **belum dikonfirmasi**
+
+Sampai BAGIAN 7 dijalankan, celah #2 masih terbuka: anon key di source masih bisa membaca,
+mengubah, dan menghapus seluruh tabel secara langsung. Kode barunya sudah tidak memakai jalur
+itu, tapi jalurnya sendiri belum ditutup.
 
 Kalau BAGIAN 7 dijalankan sebelum langkah 2, aplikasi langsung berhenti bekerja.
 
@@ -184,18 +224,52 @@ token diterbitkan untuk guru yang mana. Input yang diketik guru tidak berubah.
 
 ## Sisa pekerjaan
 
-**#5 — Kredensial admin hardcode.** `admin` / `admin1122` tertulis di `app.js` (jalur fallback
-saat Supabase tidak dikonfigurasi). Terbaca siapa pun yang membuka source.
+Urutan yang disarankan: **#0 → #5 → #7**.
 
-**#6 — Sisa di `login()`.** Sudah ikut rapi lewat #2 (RPC login kini lewat `runSupabaseRequest`,
-blok fallback dead code yang meng-`SELECT` kolom password dari `admins` sudah dibuang).
-Yang tersisa hanya jalur fallback lokal di #5.
+### #5 — Kredensial hardcode & login offline tanpa verifikasi
 
-**#7 — Rumus gaji diduplikasi di 4 tempat:** `renderRekapTable`, `generateSlipGaji`,
-`generatePrintRekapGaji`, `generatePrintRekapPerGuru`. Kalau nanti ada potongan atau tunjangan
-baru, keempatnya harus diedit. Satukan jadi satu fungsi hitung.
+| | |
+|---|---|
+| Lokasi | `app.js:945` dan `app.js:953` (cabang fallback saat Supabase tak terjangkau), plus cabang lokal di `checkTeacherCredentials` |
+| Masalah | `admin` / `elsa` + `admin1122` tertulis polos. Cabang guru lebih buruk: saat offline, siapa pun bisa masuk sebagai guru mana pun **tanpa verifikasi password sama sekali** |
+| Perbaikan | Hapus kedua cabang, ±20 baris. Murni penghapusan, tanpa pengganti |
+| Konsekuensi | Tidak ada lagi login offline. Praktis sudah begitu sejak #2 — tanpa token data memang tidak bisa diambil, jadi cabang itu kini hanya menghasilkan aplikasi kosong yang gagal di tiap penyimpanan |
+| Risiko | Rendah |
 
-**#8 — git tidak terbaca.** Perbaiki dengan:
+Catatan: #5 membersihkan password dari source, tetapi **tidak menggantikan #0** — password yang
+sama sudah terlanjur ada di riwayat commit publik.
+
+### #6 — Sisa di `login()`
+
+Selesai lewat #2: RPC login sekarang lewat `runSupabaseRequest` (punya timeout & retry), dan blok
+fallback dead code yang meng-`SELECT` kolom password dari `admins` sudah dibuang. Yang tersisa
+hanya jalur fallback lokal, yang ditangani #5.
+
+### #7 — Rumus gaji terduplikasi
+
+Diperiksa ulang: bukan 4 tempat, tapi **5**.
+
+| Lokasi | Fungsi |
+|---|---|
+| `app.js:1713` | `printTeacherHistory` |
+| `app.js:2348` | `renderRekapTable` |
+| `app.js:2391` | `generateSlipGaji` |
+| `app.js:2618` | `generatePrintRekapGaji` |
+| `app.js:2903` | `exportRecapToCSV` |
+
+**Perbaikan:** satu fungsi `hitungHonor(teacher, logs)` yang mengembalikan jumlah
+hadir/sakit/izin/alpa, total JP, honor JP, uang transport, dan totalnya. Lima pemanggil memakai
+itu. Bersih sekitar −40 baris.
+
+**Risiko:** rendah, tapi menyentuh slip gaji, dua laporan cetak, dan CSV — perlu sekali
+pemeriksaan visual hasil cetak untuk memastikan angkanya tidak berubah.
+
+**Nilainya hari ini: nol.** Tidak ada bug, hasilnya identik. Baru terasa saat rumusnya berubah
+(potongan, tunjangan, pajak). Kalau belum ada rencana itu, tunda saja.
+
+### #8 — git tidak terbaca — SELESAI
+
+Sudah dijalankan 18 September 2026:
 ```
 git config --global --add safe.directory 'D:/aplikasi/scratch/Presensi THHK GTT'
 ```
