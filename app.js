@@ -394,8 +394,10 @@ async function fetchDataFromSupabase() {
       status: a.status,
       jp: Number(a.jp),
       class: a.class,
-      topic: a.topic,
-      signature: a.signature || ''
+      topic: a.topic
+      // signature TIDAK ikut app_bootstrap (payload login ~30 KB, bukan ~700 KB).
+      // undefined = belum diambil, '' = sudah diperiksa & memang tidak ada.
+      // Diisi sesuai kebutuhan oleh ensureSignatures().
     }));
 
     sanitizeTeachersState();
@@ -417,6 +419,36 @@ async function fetchDataFromSupabase() {
       "Penyebab: " + getSupabaseErrorMessage(err)
     );
     loadDataFromStorage();
+  }
+}
+
+// Ambil tanda tangan hanya untuk baris yang akan ditampilkan.
+// Server memakai penyaringan peran yang sama seperti app_bootstrap.
+// Kegagalan di sini tidak boleh menghalangi tampilan data presensi.
+async function ensureSignatures(logs) {
+  if (!Array.isArray(logs) || logs.length === 0) return;
+  const belum = logs.filter(l => l && l.signature === undefined);
+  if (belum.length === 0) return;
+
+  if (!isSupabaseConfigured() || !getSessionToken()) {
+    belum.forEach(l => { l.signature = ''; });
+    return;
+  }
+
+  try {
+    const { data } = await runSupabaseRequest(
+      () => supabaseClient.rpc('app_get_signatures', {
+        p_token: getSessionToken(),
+        p_ids: belum.map(l => l.id)
+      }),
+      "Gagal mengambil tanda tangan",
+      1
+    );
+    const peta = data || {};
+    belum.forEach(l => { l.signature = peta[l.id] || ''; });
+  } catch (err) {
+    console.error("Gagal mengambil tanda tangan:", err);
+    // Jangan tandai '' saat gagal: biarkan undefined supaya dicoba lagi nanti.
   }
 }
 
@@ -1652,7 +1684,7 @@ function renderHistoryGuruTab() {
   updateHistoryGuruView(targetTeacherId);
 }
 
-function updateHistoryGuruView(teacherId) {
+async function updateHistoryGuruView(teacherId) {
   const profileBanner = document.getElementById("historyGuruProfileBanner");
   const tbody = document.getElementById("historyGuruTableBody");
   const countBadge = document.getElementById("historyGuruLogCountBadge");
@@ -1784,6 +1816,8 @@ function updateHistoryGuruView(teacherId) {
     countBadge.textContent = `${teacherLogs.length} Presensi`;
   }
 
+  await ensureSignatures(teacherLogs);
+
   tbody.innerHTML = "";
   if (teacherLogs.length === 0) {
     tbody.innerHTML = `
@@ -1854,7 +1888,7 @@ window.viewTeacherHistory = function(teacherId) {
   }
 };
 
-function printTeacherHistory() {
+async function printTeacherHistory() {
   const select = document.getElementById("historyGuruSelect");
   const teacherId = select ? select.value : "";
 
@@ -1885,6 +1919,8 @@ function printTeacherHistory() {
   }
 
   teacherLogs.sort((a, b) => new Date(a.date) - new Date(b.date));
+
+  await ensureSignatures(teacherLogs);
 
   const daysIndo = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
   let tableRowsHtml = "";
@@ -2117,7 +2153,7 @@ function renderPresensiForm() {
   }
 }
 
-function renderDetailedLogs() {
+async function renderDetailedLogs() {
   const container = document.getElementById("detailLogsList");
   container.innerHTML = "";
   
@@ -2195,6 +2231,8 @@ function renderDetailedLogs() {
     return;
   }
   
+  await ensureSignatures(filteredLogs);
+
   filteredLogs.forEach(log => {
     const teacher = state.teachers.find(t => t.id === log.teacherId);
     const teacherName = teacher ? teacher.name : "Guru Terhapus";
@@ -2236,9 +2274,13 @@ function renderDetailedLogs() {
   safeCreateIcons();
 }
 
-window.editLog = function(id) {
+window.editLog = async function(id) {
   const log = state.attendance.find(l => l.id === id);
   if (!log) return;
+
+  // TTD harus ada sebelum dimuat ke pad, kalau tidak pad terlihat kosong
+  // padahal server punya tanda tangannya.
+  await ensureSignatures([log]);
   
   document.getElementById("presensiId").value = log.id;
   document.getElementById("presensiTanggal").value = log.date;
@@ -2382,13 +2424,15 @@ function renderRekapTable() {
   safeCreateIcons();
 }
 
-window.generateSlipGaji = function(teacherId, month, year) {
+window.generateSlipGaji = async function(teacherId, month, year) {
   const teacher = state.teachers.find(t => t.id === teacherId);
   if (!teacher) return;
   
   const monthlyLogs = state.attendance.filter(log => isLogInMonthYear(log.date, month, year));
   
   const teacherLogs = monthlyLogs.filter(log => log.teacherId === teacher.id);
+
+  await ensureSignatures(teacherLogs);
   
   // Calculate
   const countHadir = teacherLogs.filter(log => log.status === "Hadir").length;
@@ -2770,6 +2814,8 @@ async function generatePrintRekapPerGuru() {
   const schoolNameDisplay = state.settings.schoolName && state.settings.schoolName.toUpperCase().includes("TUNAS") 
     ? state.settings.schoolName 
     : "SMP TUNAS HIDUP HARAPAN KITA";
+
+  await ensureSignatures(monthlyLogs);
 
   teachersToShow.forEach(teacher => {
     const teacherLogs = monthlyLogs
@@ -3243,7 +3289,7 @@ async function saveAttendanceToSupabase(payload, isUpdate = false, logId = null)
             jp: jpVal,
             class: classVal,
             topic: topicVal,
-            signature: sigData || state.attendance[idx].signature || ''
+            signature: sigData || state.attendance[idx].signature
           };
         }
       } else {
