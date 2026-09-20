@@ -51,6 +51,12 @@ total     = honorJP + transport
 | 13 | Backup JSON bisa memotret data rusak; Restore tak pernah ke server | **Selesai** |
 | 14 | Perangkat di lapangan menjalankan `app.js` lama dari cache | **Selesai** (mitigasi) |
 | 15 | `rate` & `transport` semua guru 0 — honorarium terhitung Rp 0 | **Terbuka** |
+| 16 | Kontras mode gelap gagal — tombol utama berasio 2,06 (AA butuh 4,5) | **Selesai** |
+| 17 | Tahun rekap dikunci 2026–2028 di markup | Terbuka |
+| 18 | Data demo tetap masuk `state` saat penyimpanan lokal kosong | Terbuka |
+| 19 | Tidak ada jejak siapa menginput/mengubah presensi | Terbuka |
+| 20 | Tarif tidak dibekukan — honor periode lama ikut berubah | Terbuka |
+| 21 | Tidak ada periode terkunci — bulan yang sudah dibayar masih bisa disunting | Terbuka |
 
 ---
 
@@ -231,7 +237,9 @@ token diterbitkan untuk guru yang mana. Input yang diketik guru tidak berubah.
 
 ## Sisa pekerjaan
 
-Urutan yang disarankan: **#0 → #5 → #7**.
+~~Urutan yang disarankan: **#0 → #5 → #7**.~~ — digantikan oleh
+[Urutan yang disarankan](#urutan-yang-disarankan) di akhir dokumen, sesudah temuan #15–#21
+masuk. Rincian tiap temuan di bawah ini tetap berlaku.
 
 ### #5 — Kredensial hardcode & login offline tanpa verifikasi
 
@@ -271,8 +279,12 @@ itu. Bersih sekitar −40 baris.
 **Risiko:** rendah, tapi menyentuh slip gaji, dua laporan cetak, dan CSV — perlu sekali
 pemeriksaan visual hasil cetak untuk memastikan angkanya tidak berubah.
 
-**Nilainya hari ini: nol.** Tidak ada bug, hasilnya identik. Baru terasa saat rumusnya berubah
-(potongan, tunjangan, pajak). Kalau belum ada rencana itu, tunda saja.
+~~**Nilainya hari ini: nol.** Tidak ada bug, hasilnya identik. Baru terasa saat rumusnya berubah
+(potongan, tunjangan, pajak). Kalau belum ada rencana itu, tunda saja.~~
+
+**Tidak lagi nol — lihat #20.** Kesimpulan di atas ditulis sebelum diketahui bahwa tarif tidak
+pernah dibekukan di baris presensi. Pembekuan tarif harus dikerjakan di tempat honor dihitung,
+dan tempat itu ada lima. Menyatukannya lebih dulu berarti pekerjaan itu dilakukan sekali.
 
 ### #8 — git tidak terbaca — SELESAI
 
@@ -493,3 +505,184 @@ kembali nol. Data presensi tidak terpengaruh; yang berisiko hanya data guru.
 
 Urutan yang benar: betulkan tarif dulu, **lalu ambil cadangan baru**, dan jadikan berkas baru
 itu pegangan. Berkas 762 KB disimpan sebagai cadangan presensi saja.
+
+---
+
+## Pemetaan fitur — 20 September 2026
+
+Pertanyaan pemilik: fitur apa yang perlu ditambahkan. Seluruh UI dan model data dipetakan
+untuk menjawabnya.
+
+**Kesimpulannya: alur kerjanya sudah lengkap.** Enam tab, delapan jalur cetak/ekspor, slip
+gaji, tanda tangan, filter per bulan, peran admin/guru dipagari di server. Tidak ada tombol
+mati, tidak ada `TODO`, tidak ada fungsi yang didefinisikan tapi tak pernah dipanggil.
+Fitur terakhir ditambahkan 28 Juli 2026; seluruh kerja sejak 18 September murni keamanan,
+kinerja, dan keutuhan data.
+
+Yang kurang bukan fitur, melainkan **jaminan di sekitar uangnya** — dicatat sebagai #19, #20,
+dan #21. Ketiganya bermuara di satu tempat, `app_save_attendance`, yang sudah memegang
+`s.user_id` untuk pemeriksaan izin.
+
+**Satu ide yang gugur sebelum diusulkan:** input presensi massal satu layar untuk semua guru.
+Input presensi memakai tanda tangan per guru (`index.html:464`), dan tanda tangan itulah bukti
+keabsahannya — input massal oleh admin justru membuang bukti tersebut.
+
+---
+
+## #16 — Kontras mode gelap gagal, dan penyegaran tampilan — SELESAI
+
+Dikerjakan 20 September 2026. Commit `bb86a1c` dan `4afc584`. Lingkup sengaja dibatasi pada
+`style.css` plus tujuh nilai warna di `app.js`; struktur, `id`, dan SQL tidak disentuh, sehingga
+seluruh pekerjaan keamanan 18–20 September tidak mungkin tergores.
+
+**Cacat yang ditemukan saat mengerjakan — bukan soal selera:**
+
+| | Sebelum | Sesudah |
+|---|---|---|
+| Tombol utama, mode gelap | **2,06** (putih di atas teal terang) | **8,12** |
+| Tombol bahaya, mode gelap | — | **4,60** |
+| Status "Hadir" di dokumen cetak | 3,74 | **4,89** |
+| Status non-Hadir di dokumen cetak | 3,76 | **4,49** |
+
+Ambang WCAG AA adalah 4,5 untuk teks normal. Jadi tombol "Cetak Rekap Gaji" di mode gelap
+selama ini memang **tidak terbaca**, bukan sekadar kurang rapi.
+
+Selain itu:
+- Cincin fokus memakai nilai keras hijau tua, nyaris tak terlihat di latar gelap. Kini token
+  `--focus-ring` yang ikut tema.
+- `--shadow-xs` tidak didefinisikan ulang di blok gelap, jadi bayangan terang dipakai di atas
+  latar gelap.
+- `--primary-color` dirujuk `app.js:1791` tapi **tidak pernah didefinisikan**, sehingga teks
+  "Periode:" di Histori Guru kehilangan warnanya. Ditambahkan sebagai alias di `:root`.
+- `--danger-solid` dibuat dan sengaja **tidak** ikut berganti tema: `--danger` versi gelap
+  terlalu muda untuk jadi latar tombol berteks putih (rasionya jatuh ke ~2,4).
+
+**Penyegaran:** hue indigo dan biru ditarik mendekat ke teal supaya empat kartu dashboard
+terbaca sebagai satu set; radius dan kepadatan naik sedikit di desktop (`@media 768px` sudah
+menimpa ketiganya, jadi tampilan HP tidak berubah); bayangan dimatikan di mode gelap karena di
+sana tepi yang bekerja; `tabular-nums` pada kolom angka dan kartu statistik.
+
+**Penghapusan:** `.btn-success` tidak dipakai di mana pun. Bobot font 500 dilepas dari
+`@import` (3 pemakaian dialihkan ke 600) — satu berkas font lebih sedikit, dan itu terasa di
+koneksi 12,8 KB/detik pada #9.
+
+**Grafik Chart.js** diwarnai keras dan nilainya sudah tidak cocok dengan `--primary` bahkan
+sebelum pekerjaan ini. Sekarang mengikuti palet. **Nilainya dipatok, bukan membaca token CSS** —
+`initTheme()` (`app.js:516`) hanya mengganti atribut dan tidak merender ulang grafik, jadi nilai
+yang dibaca akan basi begitu tema dibalik. Diuji: lolos ambang WCAG 3,0 untuk elemen non-teks di
+kedua latar (teal 5,03 gelap / 3,31 terang; biru 3,98 / 4,19).
+
+**Satu perubahan menyentuh kertas.** `app.js:1952` mengisi `#printRekapArea`, jadi ia bagian
+dokumen cetak, bukan layar. Nilainya dipatok dengan alasan terbalik dari biasanya: dokumen
+dicetak di atas kertas putih, dan `var(--primary)` akan ikut mode gelap pemakai — teal terang
+`#4ec7b8` nyaris tak terbaca di kertas.
+
+**Blok cetak `style.css` tidak disentuh sama sekali** (wilayah `#printRekapArea` dan
+`@media print`), diverifikasi lewat rentang baris pada diff.
+
+**Catatan kekeliruan.** Saat mengerjakan, sempat disimpulkan bahwa `var()` di atribut `style`
+inline tidak ikut berubah saat tema diganti. **Itu keliru** — metode ukurnya cacat: elemen yang
+disuntik lewat `innerHTML` tidak ter-invalidasi, bukan `var()`-nya yang gagal. Uji ulang yang
+bersih menunjukkan `var()` inline bekerja normal. Pemindahan gaya tombol histori ke `style.css`
+tetap dipertahankan, tapi alasannya sederhana: gaya tempatnya di stylesheet, bukan di string
+template.
+
+**Belum diverifikasi, perlu mata pemilik:** keenam tab dengan data asli, tampilan di HP, dan
+sekali cetak **Laporan Presensi Individual** untuk memastikan kolom Status terbaca wajar.
+Verifikasi dilakukan tanpa login — server dev menunjuk ke Supabase produksi, dan password di
+repo justru yang sedang diganti (#0).
+
+`CACHE_NAME` sengaja tidak dinaikkan: aset lokal memakai network-first dan ini bukan perubahan
+yang wajib serentak (lihat #14).
+
+---
+
+## #17 — Tahun rekap dikunci 2026–2028
+
+`index.html:344`, `522`, dan `570` memuat daftar tahun sebagai `<option>` tetap. Rekap, histori
+guru, dan filter presensi akan buntu di 2029.
+
+**Perbaikan:** bangkitkan daftar tahunnya dari JavaScript, atau cukup rentang bergulir di
+sekitar tahun berjalan. Kecil, tapi jangan menunggu sampai Januari 2029.
+
+---
+
+## #18 — Data demo tetap masuk `state` saat penyimpanan lokal kosong
+
+`app.js:488-490` — kalau `state.teachers` kosong sesudah membaca `localStorage`,
+`loadSampleData(false)` tetap dipanggil. Catatan #2 menyebut auto-muat demo sudah dihapus; yang
+dihapus hanya pengirimannya ke server (`pushToServer` kini `false`), pemanggilannya masih ada.
+
+Akibatnya dashboard bisa menampilkan 9 guru palsu saat gagal mengambil data. Inilah mesin
+kebingungan di balik #9 dan #13: gagal ambil data → `alert()` memblokir (#10) → jatuh ke
+storage → kosong → data demo.
+
+Tidak lagi berbahaya bagi cadangan sejak #13 (Backup membaca langsung dari server), tapi tetap
+menyesatkan di layar.
+
+---
+
+## #19, #20, #21 — Tiga jaminan honorarium yang belum ada
+
+Ditemukan saat pemetaan 20 September 2026. Ketiganya bermuara di satu tempat:
+`app_save_attendance` (`supabase_migration_rls_lockdown.sql:173-220`), yang **sudah** memegang
+`s.user_id` dan `s.role` untuk pemeriksaan izin — tinggal dipakai.
+
+### #19 — Tidak ada jejak siapa menginput atau mengubah
+
+`attendance` tidak punya kolom pelaku. `created_at` diisi sekali saat INSERT dan tidak ikut
+berubah di cabang UPDATE, jadi bahkan **waktu** suntingan tidak tercatat, apalagi pelakunya.
+
+Admin mengubah JP seorang guru — dan JP itu uang — tidak bisa dibedakan dari guru yang
+menginput sendiri. Kalau suatu saat ada sengketa honorarium, tidak ada yang bisa dirujuk.
+
+Tanda tangan adalah hal terdekat dengan bukti keabsahan, tapi ia opsional dan pada UPDATE
+dipertahankan lewat `COALESCE` bila tidak dikirim ulang — jadi tidak bisa dijadikan bukti
+kepengarangan.
+
+**Perbaikan:** satu kolom `entered_by`, diisi dari `s.user_id` yang sudah ada di scope. Murah.
+
+### #20 — Tarif tidak dibekukan
+
+Honor dihitung ulang dari `teachers.rate` **saat ini**, setiap kali ditampilkan, di kelima
+tempat yang menduplikasi rumus. Tidak ada satu pun yang menyimpan tarif yang berlaku saat
+pekerjaan benar-benar dilakukan.
+
+#15 membuktikan akibatnya: tarif jadi 0, dan seluruh slip bulan-bulan lalu ikut jadi Rp 0.
+Hal yang sama terjadi setiap kali tarif dinaikkan — slip tahun lalu diam-diam berubah.
+
+**Perbaikan:** simpan `rate` dan `transport` di baris presensi saat disimpan, dan hitung dari
+situ dengan `COALESCE` ke nilai guru untuk baris lama.
+
+**Ini yang membuat #7 berhenti bernilai nol.** Catatan #7 menyimpulkan penyatuan rumus tidak
+ada gunanya hari ini karena hasilnya identik. Dengan #20, penyatuan itu jadi prasyarat: satu
+fungsi `hitungHonor()` berarti pembekuan tarif dikerjakan sekali, bukan lima kali.
+
+### #21 — Tidak ada periode terkunci
+
+Tidak ada konsep periode di skema sama sekali — tidak ada tabel `periods`, tidak ada penanda
+`locked`, tidak ada tahun ajaran. "Periode" di UI murni penyaring bulan/tahun di sisi klien
+(`isLogInMonthYear`).
+
+Akibatnya presensi bulan yang honornya **sudah dibayar** masih bisa disunting atau dihapus,
+oleh admin maupun oleh guru atas barisnya sendiri. `app_save_attendance` dan
+`app_delete_attendance` tidak punya pemeriksaan rentang tanggal.
+
+**Perbaikan termurah:** satu kolom `terkunci_sampai DATE` di tabel `settings`, dan satu
+pemeriksaan di kedua fungsi tulis. Tidak perlu tabel periode.
+
+---
+
+## Urutan yang disarankan
+
+1. **#15** — tarif 0. Aplikasi salah hitung setiap hari sampai ini dibetulkan. Isi lewat tab
+   Data Guru, **lalu ambil cadangan baru** — cadangan 762 KB yang ada merekam nilai 0.
+2. **BAGIAN 7** (`supabase_migration_rls_lockdown.sql:358`) — sampai dijalankan, anon key masih
+   bisa membaca, mengubah, dan menghapus seluruh tabel secara langsung.
+3. **#0** ganti seluruh password, lalu **#5** hapus kredensial hardcode.
+4. **#10** — 29 `alert()` masih ada. `showToast()` sudah menebak jenis pesan sendiri, jadi ini
+   nyaris hanya mengganti nama pemanggil. Dahulukan `app.js:417`, yang memblokir tepat saat
+   pengambilan data gagal.
+5. **#19** — satu kolom, nilainya sudah ada di scope. Termurah di antara tiga jaminan.
+6. **#7 + #20** dikerjakan bersama.
+7. **#21**, lalu **#11**, **#17**, **#18** kapan saja.
