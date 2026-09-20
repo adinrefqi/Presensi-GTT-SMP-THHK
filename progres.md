@@ -1,6 +1,6 @@
 # Progres — Presensi GTT SMP THHK
 
-Catatan kerja. Diperbarui: **18 September 2026**.
+Catatan kerja. Diperbarui: **20 September 2026**.
 
 ---
 
@@ -44,6 +44,9 @@ total     = honorJP + transport
 | 6 | `login()` tanpa timeout/retry, blok fallback dead code | **Selesai** lewat #2, sisanya di #5 |
 | 7 | Rumus gaji diduplikasi di 5 tempat | Terbuka |
 | 8 | `git log` tidak terbaca (`dubious ownership`) | **Selesai** |
+| 9 | Payload `app_bootstrap` 6,34 MB bikin login admin timeout | **Selesai** |
+| 10 | `alert()` di jalur error membekukan seluruh aplikasi | Terbuka |
+| 11 | `pwa-icon.png` & `school-logo.png` masing-masing 1,5 MB | Terbuka |
 
 ---
 
@@ -277,3 +280,71 @@ git config --global --add safe.directory 'D:/aplikasi/scratch/Presensi THHK GTT'
 **Catatan lepas (belum jadi temuan bernomor):** tombol Restore JSON di tab Pengaturan hanya
 menulis ke state & `localStorage`, tidak pernah ke Supabase — sehingga hasil restore tertimpa
 begitu halaman dimuat ulang. Perilaku ini sudah ada sejak sebelum perubahan di atas.
+
+---
+
+## #9 — Payload `app_bootstrap` 6,34 MB bikin login admin timeout — SELESAI
+
+Ditemukan dan diperbaiki 20 September 2026, setelah laporan "login admin tidak bisa masuk,
+jadi timeout".
+
+**Gejalanya menyesatkan.** Login-nya sebenarnya *berhasil* — `verify_admin_login` menjawab
+0,77 dtk. Yang gagal `fetchDataFromSupabase()` sesudahnya, sehingga admin masuk ke aplikasi
+kosong: dashboard menampilkan "0 dari 9 Guru". Supabase sehat, bundle di Vercel identik dengan
+lokal, service worker bersih — ketiganya sempat dicurigai dan ketiganya tidak bersalah.
+
+**Sebabnya** `app_bootstrap` (`supabase_migration_rls_lockdown.sql:151-156`) menarik seluruh
+tabel presensi **berikut kolom `signature`**, setiap kali login dan setiap refresh. Guru tidak
+terkena karena hanya menerima barisnya sendiri; admin menerima semuanya.
+
+Diukur langsung di produksi:
+
+| | Sebelum | Sesudah |
+|---|---|---|
+| Payload `app_bootstrap` (admin) | 6,34 MB | **0,70 MB** |
+| Rata-rata 1 tanda tangan | 42,4 KB PNG 1293×506 | **4,4 KB WebP 360×141** |
+| Porsi tanda tangan dari payload | 99,5% | — |
+| Data termuat saat login | 126 baris lokal (cadangan) | **161 baris dari server** |
+
+Tanda tangan tersimpan 1293×506 piksel karena kanvas 460×180 (`index.html:464`) dikalikan
+`devicePixelRatio` (~2,8×), padahal hanya ditampilkan setinggi ~28 px dan ~25 px saat dicetak.
+
+**Perbaikan** (commit `425d273` dan `5b300b5`):
+
+1. `app.js:629` — `toDataURL()` mengekspor lewat kanvas antara 360 px sebagai WebP q0,72,
+   dengan fallback PNG bila browser mengabaikan `image/webp` (Safari lama).
+2. Migrasi sekali-jalan 155 tanda tangan lama lewat browser: **155/155 berhasil, nol gagal**,
+   6,31 MB → 0,67 MB (hemat 89,4%). Postgres tidak bisa transcode gambar, jadi migrasi harus
+   lewat kanvas di sisi klien.
+3. `app.js:183` — timeout sempat dinaikkan 15 → 45 dtk sebagai tambalan, lalu **diturunkan ke
+   20 dtk** setelah payload mengecil.
+
+**Yang sengaja tidak dikerjakan.** Sempat direncanakan mengeluarkan kolom `signature` dari
+`app_bootstrap` dan mengambilnya per-baris lewat RPC baru. Dibatalkan karena setelah kompresi
+payload tinggal 0,70 MB — tidak sepadan dengan tambahan RPC, cache di klien, dan tiga tempat
+render yang harus diubah. Bangun hanya kalau payload kembali melewati ~2 MB.
+
+**Catatan untuk ke depan:** tambalan timeout 45 dtk **tidak menyelamatkan** — muatan tetap gagal
+di 91 dtk (45 + 0,6 + 45). Yang menyelesaikan hanya pengecilan payload. Jangan ulangi menaikkan
+timeout sebagai solusi.
+
+### #10 — `alert()` di jalur error membekukan seluruh aplikasi
+
+`app.js:415` memanggil `alert()` saat gagal mengambil data. Dialog modal browser memblokir
+seluruh halaman sampai diklik — aplikasi tampak menggantung, bukan gagal dengan anggun. Saat
+menelusuri #9 hal ini tiga kali tersalah-baca sebagai "renderer beku".
+
+**Perbaikan:** pakai sistem toast yang sudah ada (commit `ec66d69`) menggantikan `alert()`.
+Periksa juga pemanggilan `alert()` lain di `app.js` — pola yang sama kemungkinan tersebar.
+
+### #11 — Dua PNG 1,5 MB ikut diunduh tiap kali halaman dimuat
+
+`pwa-icon.png` dan `school-logo.png` masing-masing **1.555.425 byte**, padahal ditampilkan kecil
+(logo sidebar dan ikon PWA). Keduanya masuk daftar `ASSETS_TO_CACHE` di `sw.js`.
+
+Ini diduga ikut andil di #9: saat halaman dimuat, permintaan 6,34 MB berebut bandwidth dengan
+~3 MB PNG plus tiga skrip CDN. Statusnya **dugaan, belum dibuktikan** — yang pasti hanya bahwa
+ukurannya jauh di atas kebutuhan tampilan.
+
+**Perbaikan:** kecilkan ke ukuran tampil sebenarnya (ikon PWA cukup 512×512), harusnya turun ke
+puluhan KB.
