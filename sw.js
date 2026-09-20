@@ -1,4 +1,9 @@
-const CACHE_NAME = 'presensi-gtt-v8';
+// v9: dinaikkan 20 September 2026. Ditemukan perangkat di lapangan masih
+// menjalankan app.js lama dari cache — strategi network-first di bawah jatuh ke
+// cache begitu jaringan gagal, dan di koneksi lambat itu sering terjadi. Akibatnya
+// tanda tangan masih tersimpan PNG 1293x506 (~35 KB), bukan WebP 360px (~4 KB).
+// Menaikkan nama cache membuat activate menghapus cache lama pada muatan berikutnya.
+const CACHE_NAME = 'presensi-gtt-v9';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
