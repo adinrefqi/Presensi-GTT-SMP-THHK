@@ -2684,14 +2684,25 @@ function periksaCadangan(isi) {
     return { ok: false, alasan: "Tidak ada baris presensi yang sah di dalam berkas." };
   }
 
+  const berTtd = presensi.filter(a => a.signature).length;
+
   // Penjaga utama. Ini persis perangkap yang terjadi 20 September 2026: cadangan
   // terambil saat aplikasi gagal memuat, sehingga yang tersimpan justru data demo
   // dari loadSampleData() — 126 baris ber-ID "sample_" tanpa satu pun tanda tangan.
+  //
+  // Dua syarat harus terpenuhi sekaligus, bukan salah satu. Awalan ID saja tidak
+  // cukup: data asli pun memuat 6 baris "sample_" sisa muat demo lama, dan menolak
+  // berdasarkan itu saja akan membuang cadangan yang sah. Pembeda sebenarnya adalah
+  // tanda tangan — data demo tidak pernah punya, data asli punya.
+  //
+  // Cadangan terbitan versi 2 ke atas dipercaya langsung, karena jalur backup baru
+  // mengambilnya dari server dan menolak terbit kalau server tak terhubung.
+  const terbitanBaru = Number(isi.versi) >= 2 && isi.sumber === "server";
   const demo = presensi.filter(a => a.id.startsWith("sample_")).length;
-  if (demo > presensi.length * 0.7) {
+  if (!terbitanBaru && demo > presensi.length * 0.7 && berTtd === 0) {
     return {
       ok: false,
-      alasan: `Berkas ini berisi data demo, bukan data asli (${demo} dari ${presensi.length} baris ber-ID "sample_"). Memulihkannya akan mengotori database.`
+      alasan: `Berkas ini berisi data demo, bukan data asli (${demo} dari ${presensi.length} baris ber-ID "sample_", tanpa satu pun tanda tangan). Memulihkannya akan mengotori database.`
     };
   }
 
@@ -2700,7 +2711,7 @@ function periksaCadangan(isi) {
     guru: isi.teachers,
     presensi,
     settings: isi.settings || null,
-    berTtd: presensi.filter(a => a.signature).length
+    berTtd
   };
 }
 
