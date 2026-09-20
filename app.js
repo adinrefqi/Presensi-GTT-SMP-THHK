@@ -180,7 +180,7 @@ function isSupabaseConfigured() {
   );
 }
 
-const SUPABASE_REQUEST_TIMEOUT_MS = 15000;
+const SUPABASE_REQUEST_TIMEOUT_MS = 45000;
 const SUPABASE_REQUEST_ATTEMPTS = 2;
 
 function getSupabaseErrorMessage(error) {
@@ -628,7 +628,16 @@ class SignaturePad {
   
   toDataURL() {
     if (this.isEmpty) return '';
-    return this.canvas.toDataURL('image/png');
+    // Kanvas asli bisa 2-3x lipat karena devicePixelRatio, padahal TTD hanya tampil
+    // setinggi ~28px (~25px saat dicetak). Ekspor kecil + WebP menekan ~41KB -> ~2-4KB,
+    // dan itu yang menjaga payload app_bootstrap tetap kecil.
+    const out = document.createElement('canvas');
+    out.width = 360;
+    out.height = Math.round(360 * this.canvas.height / this.canvas.width);
+    out.getContext('2d').drawImage(this.canvas, 0, 0, out.width, out.height);
+    const webp = out.toDataURL('image/webp', 0.72);
+    // Safari lama mengabaikan 'image/webp' dan diam-diam mengembalikan PNG.
+    return webp.startsWith('data:image/webp') ? webp : out.toDataURL('image/png');
   }
   
   loadFromDataURL(dataUrl) {
