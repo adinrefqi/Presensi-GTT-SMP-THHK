@@ -47,6 +47,8 @@ total     = honorJP + transport
 | 9 | Payload `app_bootstrap` 6,34 MB bikin login admin timeout | **Selesai** |
 | 10 | `alert()` di jalur error membekukan seluruh aplikasi | Terbuka |
 | 11 | `pwa-icon.png` & `school-logo.png` masing-masing 1,5 MB | Terbuka |
+| 12 | Tanda tangan ikut terkirim tiap login (payload 718 KB) | **Selesai** |
+| 13 | Backup JSON bisa memotret data rusak; Restore tak pernah ke server | Terbuka |
 
 ---
 
@@ -319,10 +321,12 @@ Tanda tangan tersimpan 1293×506 piksel karena kanvas 460×180 (`index.html:464`
 3. `app.js:183` — timeout sempat dinaikkan 15 → 45 dtk sebagai tambalan, lalu **diturunkan ke
    20 dtk** setelah payload mengecil.
 
-**Yang sengaja tidak dikerjakan.** Sempat direncanakan mengeluarkan kolom `signature` dari
-`app_bootstrap` dan mengambilnya per-baris lewat RPC baru. Dibatalkan karena setelah kompresi
-payload tinggal 0,70 MB — tidak sepadan dengan tambahan RPC, cache di klien, dan tiga tempat
-render yang harus diubah. Bangun hanya kalau payload kembali melewati ~2 MB.
+**Sempat dibatalkan, lalu tetap dikerjakan.** Mengeluarkan kolom `signature` dari
+`app_bootstrap` awalnya dibatalkan dengan alasan "payload sudah 0,70 MB, tidak sepadan". Alasan
+itu keliru: ia mengandaikan ukuran payload satu-satunya faktor. Beberapa jam kemudian login
+gagal lagi, dan pengukuran streaming menunjukkan sebabnya — TTFB hanya 4,6 dtk tapi transfer
+718 KB butuh 56 dtk, yaitu **12,8 KB/detik di koneksi pemakai**. Server sehat (diuji dari
+koneksi lain: Supabase TTFB 0,82 dtk, Vercel 1,68 MB/dtk). Jadi dikerjakan, lihat #12.
 
 **Catatan untuk ke depan:** tambalan timeout 45 dtk **tidak menyelamatkan** — muatan tetap gagal
 di 91 dtk (45 + 0,6 + 45). Yang menyelesaikan hanya pengecilan payload. Jangan ulangi menaikkan
@@ -348,3 +352,51 @@ ukurannya jauh di atas kebutuhan tampilan.
 
 **Perbaikan:** kecilkan ke ukuran tampil sebenarnya (ikon PWA cukup 512×512), harusnya turun ke
 puluhan KB.
+
+### #12 — Tanda tangan keluar dari `app_bootstrap` — SELESAI
+
+Lanjutan #9. Sesudah kompresi, payload login masih 718 KB dan itu tetap terlalu berat di
+koneksi 12,8 KB/detik. Perbaikannya memindahkan tanda tangan keluar dari muatan login.
+
+- `supabase_migration_signature_lazy.sql` — `app_bootstrap` tidak lagi mengirim `signature`;
+  fungsi baru `app_get_signatures(p_token, p_ids)` mengambilnya per permintaan, dengan
+  penyaringan peran yang sama persis (admin semua, guru hanya miliknya).
+- `app.js` — `ensureSignatures(logs)` dipanggil di enam tempat pemakai. Konvensinya:
+  `undefined` berarti belum diambil, `''` berarti sudah diperiksa dan memang tidak ada.
+  Saat pengambilan gagal, baris **tidak** ditandai kosong supaya dicoba lagi nanti.
+- Dua jalur cetak dan slip gaji **menunggu** tanda tangan sebelum merender, supaya dokumen
+  honorarium tidak pernah tercetak tanpa TTD.
+
+Hasil terukur di produksi:
+
+| | Sebelum | Sesudah |
+|---|---|---|
+| `app_bootstrap` | 718 KB / 56 dtk | **33 KB / 1,7 dtk** |
+
+Diverifikasi lewat UI: Histori Guru menampilkan thumbnail TTD normal, dan sesudah login hanya
+6 tanda tangan yang ditarik — yaitu baris yang sedang tampil.
+
+**Catatan penting soal timeout.** `SUPABASE_REQUEST_TIMEOUT_MS` sengaja dibiarkan di 60 detik.
+Hari ini nilainya sempat diturunkan ke 20 dtk atas dasar "payload sudah kecil", dan itu
+langsung memblokir login pemilik. Jangan perketat timeout demi kerapian; ia batas atas, bukan
+penundaan, dan tidak memperlambat apa pun ketika jaringan sedang sehat.
+
+### #13 — Backup bisa memotret data rusak, dan Restore tak pernah sampai ke server
+
+Ditemukan 20 September 2026 saat memverifikasi keutuhan data. Dua cacat terpisah yang bersama-
+sama membuat cadangan terasa aman padahal tidak.
+
+**Backup memotret `state`.** Kalau pengambilan data dari server sedang gagal, aplikasi jatuh ke
+`loadSampleData()` (`app.js:452`), dan Backup JSON mengekspor **data demo** itu. Tiga berkas
+cadangan yang diambil hari ini berisi 126 baris berpola `sample_` tanpa satu pun tanda tangan,
+sementara data asli 161 baris dengan 155 tanda tangan. Pemilik mengira sudah punya cadangan.
+
+**Restore tidak pernah menulis ke Supabase.** `importRestoreJSON()` (`app.js:2550`) hanya
+mengisi `state` dan `localStorage`, lalu menampilkan "Restorasi database berhasil dilakukan!".
+Begitu halaman dimuat ulang, `app_bootstrap` menimpanya. Pesan suksesnya menyesatkan.
+
+**Perbaikan yang direncanakan:** fungsi upsert yang menyertakan `signature` (`app_bulk_insert_
+attendance` saat ini tidak mengirim kolom itu dan tanpa `ON CONFLICT`), Restore mengirim ke
+server, **restore tidak pernah menghapus** (hanya menambah dan memperbarui, supaya cadangan
+lama tidak bisa menghilangkan data baru), berkas ditolak bila berciri data demo, dan
+konfirmasi memakai angka baris sebelum apa pun ditulis.
