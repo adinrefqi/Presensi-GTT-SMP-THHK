@@ -50,6 +50,7 @@ total     = honorJP + transport
 | 12 | Tanda tangan ikut terkirim tiap login (payload 718 KB) | **Selesai** |
 | 13 | Backup JSON bisa memotret data rusak; Restore tak pernah ke server | **Selesai** |
 | 14 | Perangkat di lapangan menjalankan `app.js` lama dari cache | **Selesai** (mitigasi) |
+| 15 | `rate` & `transport` semua guru 0 — honorarium terhitung Rp 0 | **Terbuka** |
 
 ---
 
@@ -436,8 +437,24 @@ Cadangan terbitan versi 2 ke atas dipercaya langsung.
 | Baris bentrok guru+tanggal ber-ID baru | **1 dilewati, 0 ditambah** |
 | Jumlah data sesudah seluruh uji | tetap 162 baris, 9 guru |
 
-**Belum teruji:** jalur unduh berkas dan pilih berkas di browser. Logika di baliknya sudah
-diuji langsung, tapi tombol Backup dan Restore perlu sekali dicoba manual oleh pemilik.
+**Tombol Backup sudah diuji manual oleh pemilik** pada 20 September 2026. Berkas terbit
+762,4 KB, dan isinya diperiksa — bukan hanya ukurannya, karena berkas 32 KB kemarin juga
+"berhasil" terbit:
+
+| | |
+|---|---|
+| Penanda | `versi: 2`, `sumber: "server"` |
+| Metadata tertulis | 9 guru, 162 presensi, 156 bertanda tangan |
+| Isi sebenarnya | 9 guru, 162 presensi, 156 bertanda tangan — cocok |
+| Format tanda tangan | 155 WebP + **1 PNG** |
+| Bentuk kolom | `teacher_id` (bentuk server) |
+
+Satu PNG di antaranya adalah presensi pukul 13.46 dari perangkat bercache lama (#14). Ini
+sekaligus penanda berguna: kalau cadangan berikutnya sudah 100% WebP, perangkat itu sudah
+memperbarui diri.
+
+**Tombol Restore belum diuji manual.** Logika di baliknya sudah diuji langsung lewat RPC
+(lihat tabel di atas), yang tersisa hanya jalur pilih-berkas di browser.
 
 ### #14 — Perangkat di lapangan menjalankan `app.js` lama dari cache — SELESAI (mitigasi)
 
@@ -454,3 +471,25 @@ perangkat yang tidak pernah berhasil menjangkau jaringan tetap menjalankan kode 
 memang sifat PWA. Kalau ke depan ada perubahan yang wajib serentak, naikkan `CACHE_NAME`
 sebagai bagian dari perubahan itu.
 
+
+### #15 — `rate` dan `transport` semua guru bernilai 0
+
+Ditemukan 20 September 2026 saat memverifikasi keutuhan data. Kesembilan guru punya
+`rate = 0` dan `transport = 0` di server, sehingga seluruh perhitungan honorarium
+menghasilkan **Rp 0** — terlihat di kartu "Estimasi Honor" pada dashboard, di slip gaji, dan
+di rekap.
+
+**Bukan akibat pekerjaan 20 September.** Berkas cadangan jam 12.20, yang diambil sebelum
+migrasi tanda tangan jam 12.38, sudah menunjukkan `rate` 0. Jadi kondisi ini sudah ada
+sebelumnya. Nilai seed awal di `supabase_setup.sql` adalah 45.000–55.000 untuk rate dan
+20.000–25.000 untuk transport.
+
+**Perbaikan:** isi ulang lewat tab Data Guru GTT. Tidak perlu SQL.
+
+**Jebakan yang menyertainya — penting.** Restore menimpa `rate` dan `transport` guru dengan
+nilai dari berkas cadangan. Cadangan 762 KB tertanggal 20 September merekam `rate = 0` apa
+adanya. Artinya bila tarif sudah dibetulkan lalu suatu saat berkas itu dipulihkan, tarifnya
+kembali nol. Data presensi tidak terpengaruh; yang berisiko hanya data guru.
+
+Urutan yang benar: betulkan tarif dulu, **lalu ambil cadangan baru**, dan jadikan berkas baru
+itu pegangan. Berkas 762 KB disimpan sebagai cadangan presensi saja.
