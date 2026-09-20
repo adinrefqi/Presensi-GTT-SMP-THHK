@@ -436,16 +436,22 @@ async function ensureSignatures(logs) {
   }
 
   try {
-    const { data } = await runSupabaseRequest(
-      () => supabaseClient.rpc('app_get_signatures', {
-        p_token: getSessionToken(),
-        p_ids: belum.map(l => l.id)
-      }),
-      "Gagal mengambil tanda tangan",
-      1
-    );
-    const peta = data || {};
-    belum.forEach(l => { l.signature = peta[l.id] || ''; });
+    // Dipotong per 40: sekali cadangan bisa meminta 155 TTD sekaligus (~670 KB),
+    // dan di koneksi lambat satu permintaan sebesar itu habis di timeout.
+    const POTONG = 40;
+    for (let i = 0; i < belum.length; i += POTONG) {
+      const bagian = belum.slice(i, i + POTONG);
+      const { data } = await runSupabaseRequest(
+        () => supabaseClient.rpc('app_get_signatures', {
+          p_token: getSessionToken(),
+          p_ids: bagian.map(l => l.id)
+        }),
+        "Gagal mengambil tanda tangan",
+        1
+      );
+      const peta = data || {};
+      bagian.forEach(l => { l.signature = peta[l.id] || ''; });
+    }
   } catch (err) {
     console.error("Gagal mengambil tanda tangan:", err);
     // Jangan tandai '' saat gagal: biarkan undefined supaya dicoba lagi nanti.
@@ -2579,46 +2585,245 @@ function renderSettingsForm() {
 }
 
 // DATABASE PORTABILITY BACKUP/RESTORE
-function exportBackupJSON() {
-  const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(state, null, 2));
-  const downloadAnchor = document.createElement('a');
-  
-  const today = new Date().toISOString().split('T')[0];
-  downloadAnchor.setAttribute("href", dataStr);
-  downloadAnchor.setAttribute("download", `Backup_GTT_SMP_THHK_${today}.json`);
-  document.body.appendChild(downloadAnchor);
-  downloadAnchor.click();
-  downloadAnchor.remove();
+// Lihat temuan #13 di progres.md. Dua aturan yang tidak boleh dilanggar:
+//   1. Cadangan memotret data SERVER, bukan state. Kalau app_bootstrap sedang
+//      gagal, state bisa berisi data lokal atau bahkan data demo dari
+//      loadSampleData() — dan cadangan seperti itu tidak memulihkan apa pun.
+//   2. Pemulihan hanya MENAMBAH dan MEMPERBARUI, tidak pernah menghapus.
+
+const BACKUP_VERSI = 2;
+
+async function exportBackupJSON() {
+  if (!isSupabaseConfigured() || !getSessionToken()) {
+    showToast("Cadangan hanya bisa dibuat saat terhubung ke database, supaya isinya dijamin data asli.", "error", "Gagal membuat cadangan");
+    return;
+  }
+
+  showLoadingOverlay(true);
+  try {
+    // Langsung dari server, jangan lewat state.
+    const { data } = await runSupabaseRequest(
+      () => supabaseClient.rpc('app_bootstrap', { p_token: getSessionToken() }),
+      "Gagal mengambil data untuk cadangan",
+      1
+    );
+
+    const muatan = data || {};
+    const guru = muatan.teachers || [];
+    const presensi = (muatan.attendance || []).map(a => ({ ...a }));
+
+    if (guru.length === 0 && presensi.length === 0) {
+      showToast("Server tidak mengembalikan data apa pun, jadi cadangan dibatalkan.", "error", "Gagal membuat cadangan");
+      return;
+    }
+
+    // Tanda tangan tidak ikut app_bootstrap, padahal cadangan tanpa TTD tidak
+    // berguna untuk pemulihan. Diambil seluruhnya di sini.
+    await ensureSignatures(presensi);
+    const berTtd = presensi.filter(a => a.signature).length;
+
+    const cadangan = {
+      versi: BACKUP_VERSI,
+      dibuat_pada: new Date().toISOString(),
+      sumber: "server",
+      jumlah: { guru: guru.length, presensi: presensi.length, bertanda_tangan: berTtd },
+      teachers: guru,
+      attendance: presensi,
+      settings: muatan.settings || {}
+    };
+
+    // Blob, bukan data: URI — cadangan berisi tanda tangan bisa ratusan KB dan
+    // melewati batas panjang URL.
+    const blob = new Blob([JSON.stringify(cadangan, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const tautan = document.createElement("a");
+    tautan.href = url;
+    tautan.download = `Backup_GTT_SMP_THHK_${new Date().toISOString().split("T")[0]}.json`;
+    document.body.appendChild(tautan);
+    tautan.click();
+    tautan.remove();
+    URL.revokeObjectURL(url);
+
+    showToast(`${presensi.length} presensi (${berTtd} bertanda tangan) dan ${guru.length} guru tersimpan.`, "success", "Cadangan dibuat");
+  } catch (err) {
+    console.error("Gagal membuat cadangan:", err);
+    showToast("Data tidak dapat diambil dari server, jadi cadangan TIDAK dibuat. Lebih baik tidak punya cadangan daripada punya cadangan yang salah isi. Penyebab: " + getSupabaseErrorMessage(err), "error", "Gagal membuat cadangan", 7000);
+  } finally {
+    showLoadingOverlay(false);
+  }
 }
 
-function importRestoreJSON(event) {
-  const file = event.target.files[0];
-  if (!file) return;
-  
-  const reader = new FileReader();
-  reader.onload = function(e) {
-    try {
-      const importedState = JSON.parse(e.target.result);
-      
-      // Simple validation of fields
-      if (importedState.teachers && importedState.attendance && importedState.settings) {
-        state.teachers = importedState.teachers;
-        state.attendance = importedState.attendance;
-        state.settings = importedState.settings;
-        if (importedState.theme) state.theme = importedState.theme;
-        
-        saveData();
-        initTheme();
-        renderAllViews();
-        alert("Restorasi database berhasil dilakukan!");
-      } else {
-        alert("Gagal membaca cadangan: Format file JSON tidak sesuai.");
-      }
-    } catch (err) {
-      alert("Error parsing file JSON: " + err.message);
-    }
+// Menerima dua bentuk: cadangan baru (nama kolom server) dan cadangan lama
+// (nama kolom klien, teacherId). Keluarannya selalu bentuk server.
+function normalkanBarisCadangan(a) {
+  if (!a || typeof a !== "object") return null;
+  const teacherId = a.teacher_id !== undefined ? a.teacher_id : a.teacherId;
+  if (!a.id || !teacherId || !a.date || !a.status) return null;
+  return {
+    id: String(a.id),
+    teacher_id: String(teacherId),
+    date: a.date,
+    status: a.status,
+    jp: Number(a.jp) || 0,
+    class: a.class || null,
+    topic: a.topic || null,
+    signature: a.signature || ""
   };
-  reader.readAsText(file);
+}
+
+function periksaCadangan(isi) {
+  if (!isi || typeof isi !== "object") {
+    return { ok: false, alasan: "Berkas bukan JSON yang sah." };
+  }
+  if (!Array.isArray(isi.teachers) || !Array.isArray(isi.attendance)) {
+    return { ok: false, alasan: "Format tidak sesuai: tidak ada daftar guru atau presensi di dalamnya." };
+  }
+
+  const presensi = isi.attendance.map(normalkanBarisCadangan).filter(Boolean);
+  if (presensi.length === 0) {
+    return { ok: false, alasan: "Tidak ada baris presensi yang sah di dalam berkas." };
+  }
+
+  // Penjaga utama. Ini persis perangkap yang terjadi 20 September 2026: cadangan
+  // terambil saat aplikasi gagal memuat, sehingga yang tersimpan justru data demo
+  // dari loadSampleData() — 126 baris ber-ID "sample_" tanpa satu pun tanda tangan.
+  const demo = presensi.filter(a => a.id.startsWith("sample_")).length;
+  if (demo > presensi.length * 0.7) {
+    return {
+      ok: false,
+      alasan: `Berkas ini berisi data demo, bukan data asli (${demo} dari ${presensi.length} baris ber-ID "sample_"). Memulihkannya akan mengotori database.`
+    };
+  }
+
+  return {
+    ok: true,
+    guru: isi.teachers,
+    presensi,
+    settings: isi.settings || null,
+    berTtd: presensi.filter(a => a.signature).length
+  };
+}
+
+async function importRestoreJSON(event) {
+  const berkas = event.target.files[0];
+  event.target.value = "";   // supaya berkas yang sama bisa dipilih lagi
+  if (!berkas) return;
+
+  if (!isSupabaseConfigured() || !getSessionToken()) {
+    showToast("Pemulihan hanya bisa dilakukan saat terhubung ke database.", "error", "Gagal memulihkan");
+    return;
+  }
+  if (!state.currentUser || state.currentUser.role !== "admin") {
+    showToast("Hanya admin yang dapat memulihkan cadangan.", "error", "Gagal memulihkan");
+    return;
+  }
+
+  let isi;
+  try {
+    isi = JSON.parse(await berkas.text());
+  } catch (err) {
+    showToast("Berkas tidak bisa dibaca: " + err.message, "error", "Gagal memulihkan");
+    return;
+  }
+
+  const periksa = periksaCadangan(isi);
+  if (!periksa.ok) {
+    showToast(periksa.alasan, "error", "Cadangan ditolak", 8000);
+    return;
+  }
+
+  const lanjut = confirm(
+    "PEMULIHAN CADANGAN\n\n" +
+    `Berkas   : ${periksa.presensi.length} presensi (${periksa.berTtd} bertanda tangan), ${periksa.guru.length} guru\n` +
+    `Sekarang : ${state.attendance.length} presensi, ${state.teachers.length} guru\n\n` +
+    "Pemulihan hanya MENAMBAH dan MEMPERBARUI.\n" +
+    "Tidak ada data yang dihapus.\n\n" +
+    "Lanjutkan?"
+  );
+  if (!lanjut) return;
+
+  showLoadingOverlay(true);
+  const catatan = { guru: 0, guruGagal: 0, ditambah: 0, diperbarui: 0, dilewati: 0 };
+
+  try {
+    // Guru lebih dulu: attendance.teacher_id punya foreign key ke teachers.
+    for (const g of periksa.guru) {
+      if (!g || !g.id) continue;
+      try {
+        await runSupabaseRequest(
+          () => supabaseClient.rpc('app_save_teacher', {
+            p_token: getSessionToken(),
+            p_id: g.id,
+            p_name: g.name,
+            p_subject: g.subject,
+            p_rate: Number(g.rate) || 0,
+            p_transport: Number(g.transport) || 0,
+            p_status: g.status || 'aktif',
+            p_password: ""   // kosong = password lama dipertahankan
+          }),
+          "Gagal memulihkan data guru",
+          1
+        );
+        catatan.guru++;
+      } catch (err) {
+        catatan.guruGagal++;
+        console.error("Guru gagal dipulihkan:", g.id, err);
+      }
+    }
+
+    // Presensi dipotong supaya satu permintaan tidak terlalu besar di koneksi lambat.
+    const POTONG = 40;
+    for (let i = 0; i < periksa.presensi.length; i += POTONG) {
+      const { data } = await runSupabaseRequest(
+        () => supabaseClient.rpc('app_restore_attendance', {
+          p_token: getSessionToken(),
+          p_rows: periksa.presensi.slice(i, i + POTONG)
+        }),
+        "Gagal memulihkan presensi",
+        1
+      );
+      const h = data || {};
+      catatan.ditambah += h.ditambah || 0;
+      catatan.diperbarui += h.diperbarui || 0;
+      catatan.dilewati += h.dilewati || 0;
+    }
+
+    const s = periksa.settings || {};
+    const namaSekolah = s.school_name || s.schoolName;
+    if (namaSekolah) {
+      await runSupabaseRequest(
+        () => supabaseClient.rpc('app_save_settings', {
+          p_token: getSessionToken(),
+          p_school_name: namaSekolah,
+          p_school_address: s.school_address || s.schoolAddress || '',
+          p_principal_name: s.principal_name || s.principalName || '',
+          p_principal_nip: s.principal_nip || s.principalNip || '',
+          p_treasurer_name: s.treasurer_name || s.treasurerName || '',
+          p_treasurer_nip: s.treasurer_nip || s.treasurerNip || ''
+        }),
+        "Gagal memulihkan pengaturan sekolah",
+        1
+      );
+    }
+
+    // Muat ulang dari server supaya yang tampil benar-benar keadaan sesudahnya.
+    await fetchDataFromSupabase();
+    renderAllViews();
+
+    let ringkas = `${catatan.ditambah} presensi ditambah, ${catatan.diperbarui} diperbarui, ${catatan.guru} guru dipulihkan.`;
+    if (catatan.dilewati > 0) {
+      ringkas += ` ${catatan.dilewati} dilewati karena bentrok guru+tanggal dengan presensi lain.`;
+    }
+    if (catatan.guruGagal > 0) {
+      ringkas += ` ${catatan.guruGagal} guru gagal — lihat console.`;
+    }
+    showToast(ringkas, catatan.guruGagal > 0 ? "warning" : "success", "Pemulihan selesai", 9000);
+  } catch (err) {
+    console.error("Gagal memulihkan cadangan:", err);
+    showToast("Pemulihan berhenti di tengah jalan. Data yang sudah masuk TIDAK terhapus. Penyebab: " + getSupabaseErrorMessage(err), "error", "Gagal memulihkan", 9000);
+  } finally {
+    showLoadingOverlay(false);
+  }
 }
 
 // ====================================================
