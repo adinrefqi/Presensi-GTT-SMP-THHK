@@ -48,7 +48,8 @@ total     = honorJP + transport
 | 10 | `alert()` di jalur error membekukan seluruh aplikasi | Terbuka |
 | 11 | `pwa-icon.png` & `school-logo.png` masing-masing 1,5 MB | Terbuka |
 | 12 | Tanda tangan ikut terkirim tiap login (payload 718 KB) | **Selesai** |
-| 13 | Backup JSON bisa memotret data rusak; Restore tak pernah ke server | Terbuka |
+| 13 | Backup JSON bisa memotret data rusak; Restore tak pernah ke server | **Selesai** |
+| 14 | Perangkat di lapangan menjalankan `app.js` lama dari cache | **Selesai** (mitigasi) |
 
 ---
 
@@ -381,7 +382,7 @@ Hari ini nilainya sempat diturunkan ke 20 dtk atas dasar "payload sudah kecil", 
 langsung memblokir login pemilik. Jangan perketat timeout demi kerapian; ia batas atas, bukan
 penundaan, dan tidak memperlambat apa pun ketika jaringan sedang sehat.
 
-### #13 — Backup bisa memotret data rusak, dan Restore tak pernah sampai ke server
+### #13 — Backup bisa memotret data rusak, dan Restore tak pernah sampai ke server — SELESAI
 
 Ditemukan 20 September 2026 saat memverifikasi keutuhan data. Dua cacat terpisah yang bersama-
 sama membuat cadangan terasa aman padahal tidak.
@@ -395,8 +396,61 @@ sementara data asli 161 baris dengan 155 tanda tangan. Pemilik mengira sudah pun
 mengisi `state` dan `localStorage`, lalu menampilkan "Restorasi database berhasil dilakukan!".
 Begitu halaman dimuat ulang, `app_bootstrap` menimpanya. Pesan suksesnya menyesatkan.
 
-**Perbaikan yang direncanakan:** fungsi upsert yang menyertakan `signature` (`app_bulk_insert_
-attendance` saat ini tidak mengirim kolom itu dan tanpa `ON CONFLICT`), Restore mengirim ke
-server, **restore tidak pernah menghapus** (hanya menambah dan memperbarui, supaya cadangan
-lama tidak bisa menghilangkan data baru), berkas ditolak bila berciri data demo, dan
-konfirmasi memakai angka baris sebelum apa pun ditulis.
+**Perbaikan yang dikerjakan** (commit `2c571cf` dan `9e4e53b`):
+
+*Backup* kini mengambil langsung dari server lewat `app_bootstrap`, bukan dari `state`, lalu
+menarik seluruh tanda tangan — cadangan tanpa TTD tidak berguna untuk pemulihan. Kalau server
+tidak bisa dihubungi, aplikasi **menolak menerbitkan berkas** daripada menghasilkan cadangan
+yang salah isi. Berkas memakai `Blob`, bukan `data:` URI yang punya batas panjang URL, dan
+membawa metadata `versi`, `dibuat_pada`, `sumber`, serta jumlah baris.
+
+*Restore* memakai fungsi SQL baru `app_restore_attendance` (`supabase_migration_restore.sql`)
+dan memegang empat aturan:
+
+1. **Tidak pernah menghapus.** Hanya menambah dan memperbarui, sehingga memulihkan cadangan
+   lama tidak bisa menghilangkan data yang lebih baru.
+2. Tanda tangan lama dipertahankan bila cadangan tidak membawanya (`COALESCE`).
+3. Baris yang bentrok guru+tanggal dengan presensi lain ber-ID berbeda **dilewati**, bukan
+   ditimpa, dan jumlahnya dilaporkan balik supaya tidak hilang diam-diam.
+4. Satu pernyataan SQL: kalau gagal, tidak ada yang tertulis.
+
+Guru dipulihkan lebih dulu karena `attendance.teacher_id` punya foreign key ke `teachers`.
+Password guru tidak tersentuh (`p_password` kosong). `alert()` diganti `showToast()`.
+
+**Penjaga data demo sempat terlalu galak.** Versi pertama menolak berkas bila >70% ID
+berawalan `sample_`. Uji di produksi menunjukkan itu keliru: data asli memuat 6 baris
+`sample_` tertanggal 30 Juni, sisa muat demo lama yang kini bagian data nyata. Syaratnya
+diperketat jadi dua sekaligus — mayoritas ID `sample_` **dan** nol tanda tangan. Tanda tangan
+adalah pembeda sebenarnya: data `loadSampleData()` tidak pernah punya, data asli punya.
+Cadangan terbitan versi 2 ke atas dipercaya langsung.
+
+**Hasil uji di produksi**, semuanya tanpa satu pun baris yang hilang atau berubah:
+
+| Uji | Hasil |
+|---|---|
+| Berkas data demo murni (126 baris `sample_`, nol TTD) | ditolak |
+| Berkas sampah tanpa daftar guru/presensi | ditolak |
+| Cadangan penuh 162 baris / 156 TTD | diterima |
+| Cadangan bentuk lama (`teacherId`) | diterima |
+| Pulihkan 3 baris tanpa TTD | 0 ditambah, 3 diperbarui, **TTD utuh** (4531/3615/4263 byte) |
+| Baris bentrok guru+tanggal ber-ID baru | **1 dilewati, 0 ditambah** |
+| Jumlah data sesudah seluruh uji | tetap 162 baris, 9 guru |
+
+**Belum teruji:** jalur unduh berkas dan pilih berkas di browser. Logika di baliknya sudah
+diuji langsung, tapi tombol Backup dan Restore perlu sekali dicoba manual oleh pemilik.
+
+### #14 — Perangkat di lapangan menjalankan `app.js` lama dari cache — SELESAI (mitigasi)
+
+Ditemukan 20 September 2026. Presensi yang diinput pukul 13.46 — jauh sesudah kompresi WebP
+ter-deploy — tanda tangannya tetap tersimpan sebagai **PNG 1293x506 berukuran 34,7 KB**, bukan
+WebP 360px ~4 KB. Perangkat yang menginputnya masih menjalankan bundle lama.
+
+Sebabnya strategi network-first di `sw.js` jatuh ke cache begitu `fetch` gagal
+(`.catch(() => caches.match(...))`), dan di koneksi lambat itu sering terjadi.
+
+**Mitigasi:** `CACHE_NAME` dinaikkan ke `presensi-gtt-v9`, sehingga handler `activate`
+menghapus cache lama pada muatan berhasil berikutnya. Disebut mitigasi, bukan penyelesaian:
+perangkat yang tidak pernah berhasil menjangkau jaringan tetap menjalankan kode lama, dan itu
+memang sifat PWA. Kalau ke depan ada perubahan yang wajib serentak, naikkan `CACHE_NAME`
+sebagai bagian dari perubahan itu.
+
