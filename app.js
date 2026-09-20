@@ -1160,8 +1160,8 @@ function renderTeacherDashboardChart(teacherId, myMonthLogs) {
         datasets: [{
           label: 'Jam Pelajaran (JP)',
           data: data.length > 0 ? data : [0],
-          backgroundColor: 'rgba(14, 165, 233, 0.75)',
-          borderColor: 'rgba(14, 165, 233, 1)',
+          backgroundColor: 'rgba(74, 124, 200, 0.75)',
+          borderColor: 'rgba(74, 124, 200, 1)',
           borderWidth: 1,
           borderRadius: 6
         }]
@@ -1479,11 +1479,11 @@ function renderDashboardChart(activeTeachers, currentMonthLogs) {
         datasets: [{
           label: 'Jam Pelajaran (JP)',
           data: data,
-          backgroundColor: 'rgba(13, 148, 136, 0.75)',
-          borderColor: 'rgba(13, 148, 136, 1)',
+          backgroundColor: 'rgba(24, 158, 145, 0.75)',
+          borderColor: 'rgba(24, 158, 145, 1)',
           borderWidth: 1,
           borderRadius: 6,
-          hoverBackgroundColor: 'rgba(13, 148, 136, 0.95)'
+          hoverBackgroundColor: 'rgba(24, 158, 145, 0.95)'
         }]
       },
       options: {
