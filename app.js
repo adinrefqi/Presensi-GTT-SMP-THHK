@@ -1560,7 +1560,7 @@ function renderGuruList() {
       <td><span class="badge badge-${t.status === 'aktif' ? 'active' : 'inactive'}">${escapeHTML(t.status)}</span></td>
       <td class="text-right">
         <div class="actions-cell" style="justify-content: flex-end;">
-          <button class="icon-btn view-history" onclick="viewTeacherHistory('${escapeHTML(t.id)}')" title="Lihat Histori Presensi Guru" style="color: var(--primary); background: rgba(13, 148, 136, 0.1); border-color: rgba(13, 148, 136, 0.2);">
+          <button class="icon-btn view-history" onclick="viewTeacherHistory('${escapeHTML(t.id)}')" title="Lihat Histori Presensi Guru">
             <i data-lucide="history"></i>
           </button>
           <button class="icon-btn edit" onclick="editTeacher('${escapeHTML(t.id)}')" title="Edit Data">
@@ -1949,7 +1949,9 @@ async function printTeacherHistory() {
       <tr>
         <td style="text-align: center; width: 30px;">${idx + 1}</td>
         <td style="width: 140px; font-weight: 500;">${escapeHTML(formattedDate)}</td>
-        <td style="text-align: center; width: 65px;"><strong style="color: ${log.status === 'Hadir' ? '#0d9488' : '#ef4444'};">${escapeHTML(log.status)}</strong></td>
+        <!-- Nilai dipatok, BUKAN var(--primary): dokumen ini dicetak di kertas
+             putih, dan token akan ikut mode gelap pemakai kalau dipakai. -->
+        <td style="text-align: center; width: 65px;"><strong style="color: ${log.status === 'Hadir' ? '#087f73' : '#d0474a'};">${escapeHTML(log.status)}</strong></td>
         <td style="text-align: center; width: 55px;">${log.status === 'Hadir' ? log.jp + ' JP' : '-'}</td>
         <td style="text-align: center; width: 70px;">${log.status === 'Hadir' ? escapeHTML(log.class || '-') : '-'}</td>
         <td>${log.status === 'Hadir' && log.topic ? escapeHTML(log.topic) : '-'}</td>
