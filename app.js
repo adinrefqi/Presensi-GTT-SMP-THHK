@@ -180,7 +180,7 @@ function isSupabaseConfigured() {
   );
 }
 
-const SUPABASE_REQUEST_TIMEOUT_MS = 20000;
+const SUPABASE_REQUEST_TIMEOUT_MS = 60000;
 const SUPABASE_REQUEST_ATTEMPTS = 2;
 
 function getSupabaseErrorMessage(error) {
